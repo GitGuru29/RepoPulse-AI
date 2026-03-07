@@ -1,7 +1,8 @@
-import { Probot } from "probot";
+import { Probot, run } from "probot";
 import { RepoPulseAnalyzer } from "@repopulse/core";
 
-export default (app: Probot) => {
+// The main app logic is now exported as a default function
+const appFn = (app: Probot) => {
     app.log.info("RepoPulse AI GitHub App loaded!");
 
     // Listen for new Pull Requests or reopened PRs
@@ -9,7 +10,7 @@ export default (app: Probot) => {
         const pr = context.payload.pull_request;
         const repoFullName = context.payload.repository.full_name;
 
-        app.log.info(`Analyzing new PR in ${repoFullName}`);
+        app.log.info(`Analyzing new PR in ${repoFullName} `);
 
         try {
             // In a real scenario, the analyzer would use the installation token context.octokit
@@ -18,11 +19,11 @@ export default (app: Probot) => {
 
             // Create a comment with the health summary on the PR
             let body = `## 🤖 RepoPulse AI Health Check\n\n`;
-            body += `**Current Repository Health Score: ${analysis.healthScore}/100**\n\n`;
+            body += `** Current Repository Health Score: ${analysis.healthScore}/100**\n\n`;
 
             if (analysis.recommendations.length > 0) {
                 body += `### Insights & Recommendations\n`;
-                analysis.recommendations.forEach(rec => {
+                analysis.recommendations.forEach((rec: string) => {
                     body += `- ${rec}\n`;
                 });
             }
@@ -35,7 +36,11 @@ export default (app: Probot) => {
 
             await context.octokit.issues.createComment(issueComment);
         } catch (err) {
-            app.log.error(err);
+            if (err instanceof Error) {
+                app.log.error(err.message);
+            } else {
+                app.log.error(String(err));
+            }
         }
     });
 
@@ -47,3 +52,5 @@ export default (app: Probot) => {
         }
     });
 };
+
+export default appFn;

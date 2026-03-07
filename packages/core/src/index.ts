@@ -1,5 +1,6 @@
-import { RepoStats, LanguageBreakdown, ContributorActivity, PRHealth, IssueHealth, RiskSummary, RepoPulseAnalysisResult } from '../types';
-import { GitHubClient } from '../utils/github';
+import { RepoStats, LanguageBreakdown, ContributorActivity, PRHealth, IssueHealth, RiskSummary, RepoPulseAnalysisResult } from './types/index';
+import { GitHubClient } from './utils/github';
+import moment from 'moment';
 
 export class RepoPulseAnalyzer {
     private client: GitHubClient;
@@ -60,24 +61,101 @@ export class RepoPulseAnalyzer {
         return breakdown;
     }
 
-    // Stubs for future implementation
     private async fetchContributors(owner: string, repo: string): Promise<ContributorActivity> {
-        return { totalCommits: 0, activeContributors: 0, topContributors: [] };
+        try {
+            // Get top 100 contributors
+            const { data } = await this.client.rest.repos.listContributors({ owner, repo, per_page: 100 });
+
+            let totalCommits = 0;
+            const topContributors = [];
+
+            for (const c of data) {
+                const commits = c.contributions;
+                totalCommits += commits;
+                topContributors.push({ login: c.login || 'Unknown', commits });
+            }
+
+            return {
+                totalCommits,
+                activeContributors: data.length,
+                topContributors: topContributors.slice(0, 5)
+            };
+        } catch {
+            return { totalCommits: 0, activeContributors: 0, topContributors: [] };
+        }
     }
 
     private async fetchPRHealth(owner: string, repo: string): Promise<PRHealth> {
-        return { openPRs: 0, closedPRs: 0, abandonedPRs: 0, averageTimeToMergeDays: 0 };
+        const thirtyDaysAgo = moment().subtract(30, 'days').toISOString();
+
+        // Use GraphQL to efficiently get open, closed, and "stale" (updated before 30 days ago) PR counts
+        const query = `
+        query repositoryData($owner: String!, $repo: String!, $staleDate: String!) {
+          repository(owner: $owner, name: $repo) {
+            openPRs: pullRequests(states: OPEN) { totalCount }
+            closedPRs: pullRequests(states: [CLOSED, MERGED]) { totalCount }
+            stalePRs: pullRequests(states: OPEN, filterBy: { updatedBefore: $staleDate }) { totalCount }
+          }
+        }
+        `;
+
+        try {
+            const data: any = await this.client.graphql(query, { owner, repo, staleDate: thirtyDaysAgo });
+            const repoData = data.repository;
+
+            return {
+                openPRs: repoData.openPRs.totalCount,
+                closedPRs: repoData.closedPRs.totalCount,
+                abandonedPRs: repoData.stalePRs.totalCount,
+                averageTimeToMergeDays: -1 // Stubbed for now, requires deep pagination 
+            };
+        } catch (e) {
+            console.error("GraphQL PR Error: ", e);
+            return { openPRs: 0, closedPRs: 0, abandonedPRs: 0, averageTimeToMergeDays: 0 };
+        }
     }
 
     private async fetchIssueHealth(owner: string, repo: string): Promise<IssueHealth> {
-        return { openIssues: 0, closedIssues: 0, staleIssues: 0 };
+        const thirtyDaysAgo = moment().subtract(30, 'days').toISOString();
+
+        const query = `
+        query repositoryData($owner: String!, $repo: String!, $staleDate: String!) {
+          repository(owner: $owner, name: $repo) {
+            openIssues: issues(states: OPEN) { totalCount }
+            closedIssues: issues(states: CLOSED) { totalCount }
+            staleIssues: issues(states: OPEN, filterBy: { updatedBefore: $staleDate }) { totalCount }
+          }
+        }
+        `;
+
+        try {
+            const data: any = await this.client.graphql(query, { owner, repo, staleDate: thirtyDaysAgo });
+            const repoData = data.repository;
+            return {
+                openIssues: repoData.openIssues.totalCount,
+                closedIssues: repoData.closedIssues.totalCount,
+                staleIssues: repoData.staleIssues.totalCount
+            };
+        } catch {
+            return { openIssues: 0, closedIssues: 0, staleIssues: 0 };
+        }
     }
 
     private calculateRisks(stats: RepoStats, contributors: ContributorActivity, prs: PRHealth, issues: IssueHealth): RiskSummary {
+        // Calculate bus factor: If the top contributor has > 60% of total commits AND there are few overall contributors.
+        let busFactorRisk = false;
+        if (contributors.topContributors.length > 0 && contributors.totalCommits > 0) {
+            const topPercent = (contributors.topContributors[0].commits / contributors.totalCommits) * 100;
+            if (topPercent > 60 && contributors.activeContributors < 5) busFactorRisk = true;
+        }
+
+        const lastUpdated = moment(stats.updatedAt);
+        const staleCodeRisk = moment().diff(lastUpdated, 'months') > 6;
+
         return {
-            dependencyRiskScore: 50, // Stub
-            busFactorRisk: contributors.activeContributors < 2,
-            staleCodeRisk: false, // Would check last commit date
+            dependencyRiskScore: 50, // Future feature
+            busFactorRisk,
+            staleCodeRisk,
             documentationRisk: !stats.description
         };
     }
