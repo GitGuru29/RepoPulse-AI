@@ -1,0 +1,22 @@
+{
+    "name": "@repopulse/cli",
+    "version": "1.0.0",
+    "bin": {
+        "repopulse": "./dist/index.js"
+    },
+    "scripts": {
+        "build": "tsc"
+    },
+    "dependencies": {
+        "@repopulse/core": "*",
+        "chalk": "^4.1.2",
+        "cli-table3": "^0.6.5",
+        "commander": "^6.2.1",
+        "ora": "^9.3.0"
+    },
+    "devDependencies": {
+        "@types/node": "^25.3.5",
+        "ts-node": "^10.9.2",
+        "typescript": "^5.9.3"
+    }
+}
