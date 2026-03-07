@@ -6,7 +6,7 @@ import { RepoPulseAnalyzer } from '@repopulse/core';
 
 export const analyzeCommand = new Command('analyze')
     .description('Analyze a GitHub repository')
-    .argument('<url>', 'GitHub repository URL or owner/repo format')
+    .arguments('<url>')
     .action(async (url: string) => {
         const spinner = ora('Analyzing repository...').start();
 
@@ -28,7 +28,7 @@ export const analyzeCommand = new Command('analyze')
             console.log('\n' + chalk.magenta.bold('💻 Language Breakdown'));
             const langTable = new Table({ head: ['Language', 'Bytes'] });
             Object.entries(result.languages).forEach(([lang, data]) => {
-                langTable.push([lang, data.bytes]);
+                langTable.push([lang, (data as { bytes: number, color: string | null }).bytes]);
             });
             console.log(langTable.toString());
 
@@ -43,7 +43,7 @@ export const analyzeCommand = new Command('analyze')
             console.log('\n' + chalk.green.bold(`✨ Overall Health Score: ${result.healthScore}/100`));
 
             console.log('\n' + chalk.yellow.bold('💡 Recommendations:'));
-            result.recommendations.forEach(rec => {
+            result.recommendations.forEach((rec: string) => {
                 console.log(`  - ${rec}`);
             });
             console.log('');
