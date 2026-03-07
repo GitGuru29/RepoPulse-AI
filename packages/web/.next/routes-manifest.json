@@ -39,6 +39,12 @@
       "regex": "^/_not\\-found(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/_not\\-found(?:/)?$"
+    },
+    {
+      "page": "/api/analyze",
+      "regex": "^/api/analyze(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/analyze(?:/)?$"
     }
   ],
   "dataRoutes": [],
