@@ -102,6 +102,18 @@ function toErrorResponse(error: any) {
     const message = error?.message || "Failed to analyze repository.";
     let body: ApiErrorBody;
     let responseStatus = 500;
+    const lowerMessage = String(message).toLowerCase();
+
+    if (status === 403 && (lowerMessage.includes("rate limit") || lowerMessage.includes("secondary rate limit"))) {
+        body = {
+            error: "GitHub API rate limit reached for unauthenticated requests.",
+            code: "GITHUB_RATE_LIMITED",
+            hint: "Retry later or provide a valid GitHub token to increase rate limits.",
+            recoverable: true
+        };
+        responseStatus = 429;
+        return NextResponse.json(body, { status: responseStatus });
+    }
 
     if (status === 401 || status === 403) {
         body = {
