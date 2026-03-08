@@ -2,6 +2,27 @@
 
 import { useState } from "react";
 
+type RiskLevel = "low" | "medium" | "high";
+
+function getRiskLevel(value: number, mediumThreshold: number, highThreshold: number): RiskLevel {
+    if (value >= highThreshold) return "high";
+    if (value >= mediumThreshold) return "medium";
+    return "low";
+}
+
+function levelLabel(level: RiskLevel): string {
+    if (level === "high") return "High";
+    if (level === "medium") return "Medium";
+    return "Low";
+}
+
+function recommendationLevel(rec: string): RiskLevel {
+    const text = rec.toLowerCase();
+    if (text.includes("high") || text.includes("stale") || text.includes("abandoned")) return "high";
+    if (text.includes("medium") || text.includes("throughput") || text.includes("triage")) return "medium";
+    return "low";
+}
+
 export default function Home() {
     const [repo, setRepo] = useState("");
     const [loading, setLoading] = useState(false);
@@ -63,6 +84,9 @@ export default function Home() {
                     <div className="card">
                         <h3>Health Score</h3>
                         <div className="score">{result.healthScore}/100</div>
+                        <div className={`badge ${result.healthScore >= 80 ? "badge-low" : result.healthScore >= 60 ? "badge-medium" : "badge-high"}`}>
+                            {result.healthScore >= 80 ? "Healthy" : result.healthScore >= 60 ? "Needs Attention" : "At Risk"}
+                        </div>
                     </div>
 
                     <div className="card">
@@ -78,6 +102,10 @@ export default function Home() {
                         <div className="stat-row">
                             <span>Watchers</span>
                             <strong>{result.stats.watchers}</strong>
+                        </div>
+                        <div className="stat-row">
+                            <span>Avg Merge Time</span>
+                            <strong>{result.pullRequests.averageTimeToMergeDays}d</strong>
                         </div>
                     </div>
 
@@ -101,11 +129,45 @@ export default function Home() {
                         </div>
                     </div>
 
+                    <div className="card">
+                        <h3>Risk Snapshot</h3>
+                        <div className="stat-row">
+                            <span>Dependency Risk</span>
+                            <div className="metric-with-badge">
+                                <strong>{result.risks.dependencyRiskScore}/100</strong>
+                                <span className={`badge badge-${getRiskLevel(result.risks.dependencyRiskScore, 65, 80)}`}>
+                                    {levelLabel(getRiskLevel(result.risks.dependencyRiskScore, 65, 80))}
+                                </span>
+                            </div>
+                        </div>
+                        <div className="stat-row">
+                            <span>Bus Factor</span>
+                            <span className={`badge ${result.risks.busFactorRisk ? "badge-high" : "badge-low"}`}>
+                                {result.risks.busFactorRisk ? "High" : "Low"}
+                            </span>
+                        </div>
+                        <div className="stat-row">
+                            <span>Code Staleness</span>
+                            <span className={`badge ${result.risks.staleCodeRisk ? "badge-medium" : "badge-low"}`}>
+                                {result.risks.staleCodeRisk ? "Stale" : "Active"}
+                            </span>
+                        </div>
+                        <div className="stat-row">
+                            <span>Documentation</span>
+                            <span className={`badge ${result.risks.documentationRisk ? "badge-medium" : "badge-low"}`}>
+                                {result.risks.documentationRisk ? "At Risk" : "Good"}
+                            </span>
+                        </div>
+                    </div>
+
                     <div className="card" style={{ gridColumn: '1 / -1' }}>
                         <h3>Actionable Insights</h3>
-                        <ul>
+                        <ul className="insight-list">
                             {result.recommendations.map((rec: string, i: number) => (
-                                <li key={i} style={{ marginBottom: "0.5rem", fontSize: "1.1rem" }}>{rec}</li>
+                                <li key={i}>
+                                    <span className={`badge badge-${recommendationLevel(rec)}`}>{levelLabel(recommendationLevel(rec))}</span>
+                                    <span>{rec}</span>
+                                </li>
                             ))}
                         </ul>
                     </div>
