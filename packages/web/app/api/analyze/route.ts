@@ -119,7 +119,18 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: "Missing 'url' in request body." }, { status: 400 });
         }
 
-        const result = await analyzeRepository(url, branch, token || undefined);
+        let result;
+        try {
+            result = await analyzeRepository(url, branch, token || undefined);
+        } catch (error: any) {
+            const status = error?.status;
+            // If a provided token is invalid, retry once without token for public repositories.
+            if (token && (status === 401 || status === 403)) {
+                result = await analyzeRepository(url, branch, undefined);
+            } else {
+                throw error;
+            }
+        }
         return NextResponse.json(result);
     } catch (error: any) {
         console.error("Analysis Error:", error);
