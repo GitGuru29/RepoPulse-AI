@@ -516,9 +516,10 @@ export class RepoPulseAnalyzer {
 
     private async repoPathExists(owner: string, repo: string, path: string): Promise<boolean> {
         try {
-            await this.executeGitHubCall(
-                `repos.getContent:${owner}/${repo}:${path}`,
-                () => this.client.rest.repos.getContent({ owner, repo, path, ref: 'HEAD' })
+            await this.withTimeout(
+                this.client.rest.repos.getContent({ owner, repo, path, ref: 'HEAD' }),
+                this.requestTimeoutMs,
+                `repos.getContent:${owner}/${repo}:${path} timed out after ${this.requestTimeoutMs}ms`
             );
             return true;
         } catch (error: unknown) {

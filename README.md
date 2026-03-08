@@ -46,6 +46,8 @@ CLI:
 cd packages/cli
 npm run build
 node dist/index.js analyze openai/openai-node
+node dist/index.js analyze openai/openai-node --json
+node dist/index.js analyze owner/private-repo --token ghp_your_token
 ```
 
 GitHub App (Probot):
