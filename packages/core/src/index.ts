@@ -1,4 +1,4 @@
-import { RepoStats, LanguageBreakdown, ContributorActivity, PRHealth, IssueHealth, RiskSummary, RepoPulseAnalysisResult } from './types/index';
+import { RepoStats, LanguageBreakdown, ContributorActivity, PRHealth, IssueHealth, RiskSummary, RepoPulseAnalysisResult, ArchitectureInsights } from './types/index';
 import { GitHubClient } from './utils/github';
 import { AnalysisError, GitHubApiError } from './errors';
 import moment from 'moment';
@@ -88,6 +88,16 @@ export class RepoPulseAnalyzer {
     private retryDelayMs: number;
     private logger?: (level: LogLevel, entry: LogEntry) => void;
     private hasAuthToken: boolean;
+    private static readonly DEFAULT_ARCHITECTURE: ArchitectureInsights = {
+        projectStructureQuality: 'moderate',
+        detectedFramework: 'Unknown',
+        missingTests: true,
+        largeFiles: [],
+        godModules: [],
+        ciCdPresent: false,
+        docsPresent: false,
+        possibleDeadCodeZones: []
+    };
 
     constructor(optionsOrToken?: RepoPulseAnalyzerOptions | string) {
         const options: RepoPulseAnalyzerOptions =
@@ -123,14 +133,17 @@ export class RepoPulseAnalyzer {
                 return cachedResult;
             }
 
-            // Fetch all required data concurrently
-            const [stats, languages, contributors, pullRequests, issues, dependencySignals] = await Promise.all([
-                this.fetchRepoStats(owner, repo),
+            const stats = await this.fetchRepoStats(owner, repo);
+            const analysisRef = normalizedRef === 'HEAD' ? (stats.defaultBranch || 'HEAD') : normalizedRef;
+
+            // Fetch all remaining data concurrently
+            const [languages, contributors, pullRequests, issues, dependencySignals, architecture] = await Promise.all([
                 this.fetchLanguages(owner, repo),
                 this.fetchContributors(owner, repo),
                 this.fetchPRHealth(owner, repo),
                 this.fetchIssueHealth(owner, repo),
-                this.fetchDependencySignals(owner, repo, normalizedRef)
+                this.fetchDependencySignals(owner, repo, analysisRef),
+                this.fetchArchitecture(owner, repo, analysisRef)
             ]);
 
             const risks = this.calculateRisks(stats, contributors, pullRequests, issues, dependencySignals);
@@ -144,6 +157,7 @@ export class RepoPulseAnalyzer {
                 pullRequests,
                 issues,
                 risks,
+                architecture,
                 healthScore,
                 recommendations
             };
@@ -180,6 +194,8 @@ export class RepoPulseAnalyzer {
                 owner: data.owner.login,
                 repo: data.name,
                 description: data.description,
+                visibility: data.private ? 'private' : (data.visibility || 'public'),
+                defaultBranch: data.default_branch || 'main',
                 stars: data.stargazers_count,
                 forks: data.forks_count,
                 watchers: data.watchers_count,
@@ -568,6 +584,120 @@ export class RepoPulseAnalyzer {
             }
             throw error;
         }
+    }
+
+    private async fetchArchitecture(owner: string, repo: string, ref: string): Promise<ArchitectureInsights> {
+        try {
+            const { data: rootListing } = await this.executeGitHubCall(
+                `repos.getContent.root:${owner}/${repo}@${ref}`,
+                () => this.client.rest.repos.getContent({ owner, repo, path: '', ref })
+            );
+
+            const rootEntries = Array.isArray(rootListing) ? rootListing : [];
+            const rootPaths = new Set(rootEntries.map((entry) => String(entry.path || '').toLowerCase()));
+
+            const frameworkChecks = [
+                { name: 'Next.js', file: 'next.config.js' },
+                { name: 'Vite', file: 'vite.config.ts' },
+                { name: 'Vite', file: 'vite.config.js' },
+                { name: 'Angular', file: 'angular.json' },
+                { name: 'Nuxt', file: 'nuxt.config.ts' },
+                { name: 'Nuxt', file: 'nuxt.config.js' },
+                { name: 'React Native', file: 'app.json' },
+                { name: 'Spring/Java', file: 'pom.xml' },
+                { name: 'Go', file: 'go.mod' },
+                { name: 'Rust', file: 'Cargo.toml' },
+                { name: 'Python', file: 'pyproject.toml' },
+                { name: 'Python', file: 'requirements.txt' }
+            ];
+            const detectedFramework = frameworkChecks.find((check) => rootPaths.has(check.file.toLowerCase()))?.name || 'Unknown';
+
+            const docsPresent = rootPaths.has('readme.md') || rootPaths.has('docs') || rootPaths.has('contributing.md');
+            const hasSrcDir = rootPaths.has('src') || rootPaths.has('app') || rootPaths.has('lib');
+            const hasTestsDir = rootPaths.has('tests') || rootPaths.has('test') || rootPaths.has('__tests__');
+            const ciCdPresent =
+                rootPaths.has('.github') ||
+                rootPaths.has('.gitlab-ci.yml') ||
+                rootPaths.has('jenkinsfile') ||
+                rootPaths.has('azure-pipelines.yml');
+
+            const tree = await this.fetchRepoTree(owner, repo, ref);
+            const blobEntries = tree.filter((entry) => entry.type === 'blob' && entry.path);
+            const largeFiles = blobEntries
+                .filter((entry) => (entry.size || 0) >= 300_000)
+                .sort((a, b) => (b.size || 0) - (a.size || 0))
+                .slice(0, 5)
+                .map((entry) => `${entry.path} (${Math.round((entry.size || 0) / 1024)} KB)`);
+
+            const sourceFilePattern = /\.(ts|tsx|js|jsx|py|java|go|rs|php|rb|cs)$/i;
+            const godModules = blobEntries
+                .filter((entry) => sourceFilePattern.test(entry.path || '') && (entry.size || 0) >= 180_000)
+                .sort((a, b) => (b.size || 0) - (a.size || 0))
+                .slice(0, 5)
+                .map((entry) => `${entry.path} (${Math.round((entry.size || 0) / 1024)} KB)`);
+
+            const deadZoneDirs = new Set<string>();
+            for (const entry of tree) {
+                const path = String(entry.path || '');
+                if (!path) continue;
+                const segments = path.split('/');
+                for (const seg of segments.slice(0, -1)) {
+                    const s = seg.toLowerCase();
+                    if (['legacy', 'old', 'deprecated', 'archive', 'backup'].includes(s)) {
+                        deadZoneDirs.add(seg);
+                    }
+                }
+            }
+
+            const testFileCount = blobEntries.filter((entry) => /(^|\/)(__tests__|tests?|spec)(\/|\.|$)/i.test(entry.path || '')).length;
+            const missingTests = !hasTestsDir && testFileCount === 0;
+
+            const qualitySignals = [
+                hasSrcDir,
+                docsPresent,
+                ciCdPresent,
+                !missingTests,
+                deadZoneDirs.size === 0
+            ].filter(Boolean).length;
+            const projectStructureQuality: ArchitectureInsights["projectStructureQuality"] =
+                qualitySignals >= 4 ? 'strong' : qualitySignals >= 2 ? 'moderate' : 'weak';
+
+            return {
+                projectStructureQuality,
+                detectedFramework,
+                missingTests,
+                largeFiles,
+                godModules,
+                ciCdPresent,
+                docsPresent,
+                possibleDeadCodeZones: Array.from(deadZoneDirs).slice(0, 5)
+            };
+        } catch {
+            return RepoPulseAnalyzer.DEFAULT_ARCHITECTURE;
+        }
+    }
+
+    private async fetchRepoTree(owner: string, repo: string, ref: string) {
+        const branchCandidates = [ref, 'main', 'master'].filter(Boolean);
+        let lastError: unknown;
+
+        for (const branch of branchCandidates) {
+            try {
+                const { data: branchData } = await this.executeGitHubCall(
+                    `repos.getBranch:${owner}/${repo}@${branch}`,
+                    () => this.client.rest.repos.getBranch({ owner, repo, branch })
+                );
+                const { data: treeData } = await this.executeGitHubCall(
+                    `git.getTree:${owner}/${repo}@${branchData.commit.sha}`,
+                    () => this.client.rest.git.getTree({ owner, repo, tree_sha: branchData.commit.sha, recursive: '1' })
+                );
+                return treeData.tree || [];
+            } catch (error: unknown) {
+                lastError = error;
+            }
+        }
+
+        throw lastError;
     }
 
     private calculateRisks(stats: RepoStats, contributors: ContributorActivity, prs: PRHealth, issues: IssueHealth, dependencySignals: DependencySignals): RiskSummary {
