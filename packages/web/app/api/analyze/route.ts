@@ -52,7 +52,26 @@ async function analyzeRepository(url: string, branch: string, token?: string | n
     const analyzer = hasTokenOverride
         ? new RepoPulseAnalyzer({ token: resolvedToken })
         : new RepoPulseAnalyzer(process.env.GITHUB_TOKEN);
-    const result = await analyzer.analyze(url, branch);
+    let result;
+    try {
+        result = await analyzer.analyze(url, branch);
+    } catch (error: any) {
+        const status = error?.status;
+        // If authenticated attempt fails, retry anonymously once for public repositories.
+        if (resolvedToken && (status === 401 || status === 403)) {
+            const anonymousCacheKey = `${url.trim().toLowerCase()}@${branch.toLowerCase()}:anon`;
+            const cachedAnon = getCachedResult(anonymousCacheKey);
+            if (cachedAnon) {
+                return cachedAnon;
+            }
+
+            const anonymousAnalyzer = new RepoPulseAnalyzer({ token: null });
+            result = await anonymousAnalyzer.analyze(url, branch);
+            setCachedResult(anonymousCacheKey, result);
+        } else {
+            throw error;
+        }
+    }
 
     if (canUseCache) {
         setCachedResult(cacheKey, result);
