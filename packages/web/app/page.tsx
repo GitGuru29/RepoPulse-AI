@@ -55,11 +55,15 @@ export default function Home() {
     const [loading, setLoading] = useState(false);
     const [result, setResult] = useState<any>(null);
     const [error, setError] = useState<string | null>(null);
+    const [errorCode, setErrorCode] = useState<string | null>(null);
+    const [errorHint, setErrorHint] = useState<string | null>(null);
     const [actionMsg, setActionMsg] = useState<string | null>(null);
 
     const runAnalysis = async (repoUrl: string, branchRef: string, tokenValue: string) => {
         setLoading(true);
         setError(null);
+        setErrorCode(null);
+        setErrorHint(null);
         setResult(null);
 
         try {
@@ -77,12 +81,17 @@ export default function Home() {
             const data = await response.json();
 
             if (!response.ok) {
-                throw new Error(data.error || "Failed to fetch analysis");
+                setError(data.error || "Failed to fetch analysis");
+                setErrorCode(data.code || null);
+                setErrorHint(data.hint || null);
+                return;
             }
 
             setResult(data);
         } catch (err: any) {
             setError(err.message);
+            setErrorCode(null);
+            setErrorHint(null);
         } finally {
             setLoading(false);
         }
@@ -194,6 +203,13 @@ export default function Home() {
             {error && (
                 <div style={{ color: "var(--danger)", textAlign: "center", marginBottom: "2rem" }}>
                     <strong>Error:</strong> {error}
+                    {errorHint && <div className="error-hint">{errorHint}</div>}
+                    {errorCode === "GITHUB_RATE_LIMITED" && (
+                        <div className="error-help">
+                            Add a valid GitHub Personal Access Token to continue.
+                            Use either a classic token or a fine-grained personal token.
+                        </div>
+                    )}
                 </div>
             )}
 

@@ -269,6 +269,17 @@ html, body {
   margin-bottom: 2rem;
 }
 
+.error-hint {
+  margin-top: 0.5rem;
+  color: #fbbf24;
+}
+
+.error-help {
+  margin-top: 0.5rem;
+  font-weight: 600;
+  color: #fde68a;
+}
+
 .actions {
   display: flex;
   flex-wrap: wrap;
