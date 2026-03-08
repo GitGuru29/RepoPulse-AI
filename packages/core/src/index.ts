@@ -87,12 +87,14 @@ export class RepoPulseAnalyzer {
     private retryCount: number;
     private retryDelayMs: number;
     private logger?: (level: LogLevel, entry: LogEntry) => void;
+    private hasAuthToken: boolean;
 
     constructor(optionsOrToken?: RepoPulseAnalyzerOptions | string) {
         const options: RepoPulseAnalyzerOptions =
             typeof optionsOrToken === 'string'
                 ? { token: optionsOrToken }
                 : (optionsOrToken || {});
+        const resolvedToken = options.token || process.env.GITHUB_TOKEN;
 
         this.client = new GitHubClient({ token: options.token });
         this.cacheTtlMs = options.cacheTtlMs ?? RepoPulseAnalyzer.DEFAULT_CACHE_TTL_MS;
@@ -100,6 +102,7 @@ export class RepoPulseAnalyzer {
         this.retryCount = options.retryCount ?? RepoPulseAnalyzer.DEFAULT_RETRY_COUNT;
         this.retryDelayMs = options.retryDelayMs ?? RepoPulseAnalyzer.DEFAULT_RETRY_DELAY_MS;
         this.logger = options.logger;
+        this.hasAuthToken = Boolean(resolvedToken && resolvedToken.trim());
     }
 
     public async analyze(repoInput: string): Promise<RepoPulseAnalysisResult> {
@@ -278,6 +281,13 @@ export class RepoPulseAnalyzer {
                 averageTimeToMergeDays
             };
         } catch (error: unknown) {
+            if (this.shouldUseUnauthenticatedFallback(error)) {
+                this.log('warn', {
+                    event: 'analysis.public_fallback',
+                    message: 'GraphQL auth unavailable; using REST fallback for pull request health.'
+                });
+                return this.fetchPRHealthRest(owner, repo);
+            }
             throw this.toGitHubApiError(error, `Failed to fetch pull request health for ${owner}/${repo}`);
         }
     }
@@ -310,6 +320,13 @@ export class RepoPulseAnalyzer {
                 staleIssues: repoData.staleIssues.totalCount
             };
         } catch (error: unknown) {
+            if (this.shouldUseUnauthenticatedFallback(error)) {
+                this.log('warn', {
+                    event: 'analysis.public_fallback',
+                    message: 'GraphQL auth unavailable; using REST fallback for issue health.'
+                });
+                return this.fetchIssueHealthRest(owner, repo);
+            }
             throw this.toGitHubApiError(error, `Failed to fetch issue health for ${owner}/${repo}`);
         }
     }
@@ -369,7 +386,147 @@ export class RepoPulseAnalyzer {
 
             return { hasLockfile, hasDependabotConfig, ecosystemCount, manifestCount };
         } catch (error: unknown) {
+            if (this.shouldUseUnauthenticatedFallback(error)) {
+                this.log('warn', {
+                    event: 'analysis.public_fallback',
+                    message: 'GraphQL auth unavailable; using REST fallback for dependency signals.'
+                });
+                return this.fetchDependencySignalsRest(owner, repo);
+            }
             throw this.toGitHubApiError(error, `Failed to fetch dependency signals for ${owner}/${repo}`);
+        }
+    }
+
+    private async fetchPRHealthRest(owner: string, repo: string): Promise<PRHealth> {
+        const staleDate = moment().subtract(30, 'days').format('YYYY-MM-DD');
+        const repoQuery = `repo:${owner}/${repo}`;
+
+        const [openResult, closedResult, staleResult, mergedSample] = await Promise.all([
+            this.executeGitHubCall(
+                `search.pr.open:${owner}/${repo}`,
+                () => this.client.rest.search.issuesAndPullRequests({ q: `${repoQuery} is:pr is:open`, per_page: 1 })
+            ),
+            this.executeGitHubCall(
+                `search.pr.closed:${owner}/${repo}`,
+                () => this.client.rest.search.issuesAndPullRequests({ q: `${repoQuery} is:pr is:closed`, per_page: 1 })
+            ),
+            this.executeGitHubCall(
+                `search.pr.stale:${owner}/${repo}`,
+                () => this.client.rest.search.issuesAndPullRequests({ q: `${repoQuery} is:pr is:open updated:<${staleDate}`, per_page: 1 })
+            ),
+            this.executeGitHubCall(
+                `pulls.list.closed:${owner}/${repo}`,
+                () => this.client.rest.pulls.list({ owner, repo, state: 'closed', sort: 'updated', direction: 'desc', per_page: 50 })
+            )
+        ]);
+
+        const mergedDurations = mergedSample.data
+            .filter((pr) => !!pr.merged_at)
+            .map((pr) => moment(pr.merged_at).diff(moment(pr.created_at), 'days', true));
+        const averageTimeToMergeDays = mergedDurations.length > 0
+            ? Number((mergedDurations.reduce((sum, value) => sum + value, 0) / mergedDurations.length).toFixed(2))
+            : 0;
+
+        return {
+            openPRs: openResult.data.total_count,
+            closedPRs: closedResult.data.total_count,
+            abandonedPRs: staleResult.data.total_count,
+            averageTimeToMergeDays
+        };
+    }
+
+    private async fetchIssueHealthRest(owner: string, repo: string): Promise<IssueHealth> {
+        const staleDate = moment().subtract(30, 'days').format('YYYY-MM-DD');
+        const repoQuery = `repo:${owner}/${repo}`;
+
+        const [openResult, closedResult, staleResult] = await Promise.all([
+            this.executeGitHubCall(
+                `search.issue.open:${owner}/${repo}`,
+                () => this.client.rest.search.issuesAndPullRequests({ q: `${repoQuery} is:issue is:open`, per_page: 1 })
+            ),
+            this.executeGitHubCall(
+                `search.issue.closed:${owner}/${repo}`,
+                () => this.client.rest.search.issuesAndPullRequests({ q: `${repoQuery} is:issue is:closed`, per_page: 1 })
+            ),
+            this.executeGitHubCall(
+                `search.issue.stale:${owner}/${repo}`,
+                () => this.client.rest.search.issuesAndPullRequests({ q: `${repoQuery} is:issue is:open updated:<${staleDate}`, per_page: 1 })
+            )
+        ]);
+
+        return {
+            openIssues: openResult.data.total_count,
+            closedIssues: closedResult.data.total_count,
+            staleIssues: staleResult.data.total_count
+        };
+    }
+
+    private async fetchDependencySignalsRest(owner: string, repo: string): Promise<DependencySignals> {
+        const [
+            packageJson,
+            packageLock,
+            yarnLock,
+            pnpmLock,
+            requirementsTxt,
+            pipfile,
+            poetryLock,
+            goMod,
+            cargoToml,
+            pomXml,
+            gradleBuild,
+            gemfile,
+            composerJson,
+            dependabotYml,
+            dependabotYaml
+        ] = await Promise.all([
+            this.repoPathExists(owner, repo, 'package.json'),
+            this.repoPathExists(owner, repo, 'package-lock.json'),
+            this.repoPathExists(owner, repo, 'yarn.lock'),
+            this.repoPathExists(owner, repo, 'pnpm-lock.yaml'),
+            this.repoPathExists(owner, repo, 'requirements.txt'),
+            this.repoPathExists(owner, repo, 'Pipfile'),
+            this.repoPathExists(owner, repo, 'poetry.lock'),
+            this.repoPathExists(owner, repo, 'go.mod'),
+            this.repoPathExists(owner, repo, 'Cargo.toml'),
+            this.repoPathExists(owner, repo, 'pom.xml'),
+            this.repoPathExists(owner, repo, 'build.gradle'),
+            this.repoPathExists(owner, repo, 'Gemfile'),
+            this.repoPathExists(owner, repo, 'composer.json'),
+            this.repoPathExists(owner, repo, '.github/dependabot.yml'),
+            this.repoPathExists(owner, repo, '.github/dependabot.yaml')
+        ]);
+
+        const hasManifest = {
+            node: packageJson,
+            python: requirementsTxt || pipfile || poetryLock,
+            go: goMod,
+            rust: cargoToml,
+            java: pomXml || gradleBuild,
+            ruby: gemfile,
+            php: composerJson
+        };
+
+        const manifestCount = Object.values(hasManifest).filter(Boolean).length;
+        const ecosystemCount = manifestCount;
+        const hasLockfile = Boolean(packageLock || yarnLock || pnpmLock || poetryLock);
+        const hasDependabotConfig = Boolean(dependabotYml || dependabotYaml);
+
+        return { hasLockfile, hasDependabotConfig, ecosystemCount, manifestCount };
+    }
+
+    private async repoPathExists(owner: string, repo: string, path: string): Promise<boolean> {
+        try {
+            await this.executeGitHubCall(
+                `repos.getContent:${owner}/${repo}:${path}`,
+                () => this.client.rest.repos.getContent({ owner, repo, path, ref: 'HEAD' })
+            );
+            return true;
+        } catch (error: unknown) {
+            const status = this.getErrorStatus(error);
+            if (status === 404) {
+                return false;
+            }
+            throw error;
         }
     }
 
@@ -434,6 +591,16 @@ export class RepoPulseAnalyzer {
         if (staleCodeRisk) score += 10;
 
         return Math.max(0, Math.min(100, score));
+    }
+
+    private shouldUseUnauthenticatedFallback(error: unknown): boolean {
+        const status = this.getErrorStatus(error);
+        return !this.hasAuthToken && (status === 401 || status === 403);
+    }
+
+    private getErrorStatus(error: unknown): number | undefined {
+        return (error as { status?: number; response?: { status?: number } })?.status ??
+            (error as { response?: { status?: number } })?.response?.status;
     }
 
     private toGitHubApiError(error: unknown, context: string): GitHubApiError {
