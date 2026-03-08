@@ -7,14 +7,24 @@ import { RepoPulseAnalyzer } from '@repopulse/core';
 export const analyzeCommand = new Command('analyze')
     .description('Analyze a GitHub repository')
     .arguments('<url>')
-    .action(async (url: string) => {
-        const spinner = ora('Analyzing repository...').start();
+    .option('-b, --branch <branch>', 'Branch/tag/ref to analyze (default: HEAD)')
+    .option('-t, --token <token>', 'GitHub token (overrides GITHUB_TOKEN)')
+    .option('--json', 'Output raw JSON instead of formatted tables')
+    .option('--compact', 'Use compact JSON output with --json')
+    .action(async (url: string, options: { branch?: string; token?: string; json?: boolean; compact?: boolean }) => {
+        const spinner = options.json ? null : ora('Analyzing repository...').start();
 
         try {
-            const analyzer = new RepoPulseAnalyzer(process.env.GITHUB_TOKEN);
-            const result = await analyzer.analyze(url);
+            const analyzer = new RepoPulseAnalyzer(options.token || process.env.GITHUB_TOKEN);
+            const result = await analyzer.analyze(url, options.branch || 'HEAD');
 
-            spinner.succeed(`Analysis complete for ${chalk.bold(result.stats.owner + '/' + result.stats.repo)}`);
+            if (options.json) {
+                const spacing = options.compact ? 0 : 2;
+                console.log(JSON.stringify(result, null, spacing));
+                return;
+            }
+
+            spinner?.succeed(`Analysis complete for ${chalk.bold(result.stats.owner + '/' + result.stats.repo)}`);
 
             console.log('\n' + chalk.blue.bold('📊 Repository Stats'));
             const statsTable = new Table();
@@ -49,7 +59,9 @@ export const analyzeCommand = new Command('analyze')
             console.log('');
 
         } catch (error: any) {
-            spinner.fail('Analysis failed');
+            if (spinner) {
+                spinner.fail('Analysis failed');
+            }
             console.error(chalk.red(error.message));
             process.exit(1);
         }

@@ -62,8 +62,9 @@ html, body {
 
 .search-box {
   display: flex;
+  flex-wrap: wrap;
   gap: 1rem;
-  max-width: 600px;
+  max-width: 900px;
   margin: 0 auto 3rem;
 }
 
@@ -101,6 +102,14 @@ html, body {
 
 .search-button:active {
   transform: scale(0.98);
+}
+
+.token-input {
+  min-width: 320px;
+}
+
+.branch-input {
+  min-width: 220px;
 }
 
 .results-grid {
@@ -144,4 +153,112 @@ html, body {
 
 .stat-row:last-child {
   border-bottom: none;
+}
+
+.metric-with-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 0.2rem 0.6rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.badge-low {
+  background: rgba(34, 197, 94, 0.16);
+  color: var(--success);
+}
+
+.badge-medium {
+  background: rgba(245, 158, 11, 0.16);
+  color: var(--warning);
+}
+
+.badge-high {
+  background: rgba(239, 68, 68, 0.16);
+  color: var(--danger);
+}
+
+.insight-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.insight-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 1.05rem;
+}
+
+.language-stack-bar {
+  display: flex;
+  height: 12px;
+  width: 100%;
+  border-radius: 999px;
+  overflow: hidden;
+  margin-bottom: 1rem;
+  background: var(--border);
+}
+
+.language-stack-segment {
+  height: 100%;
+}
+
+.language-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.language-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.5rem;
+}
+
+.language-list li:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.language-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.language-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+}
+
+@media (max-width: 768px) {
+  .search-box {
+    flex-direction: column;
+  }
+
+  .token-input {
+    min-width: 0;
+  }
+
+  .branch-input {
+    min-width: 0;
+  }
 }
