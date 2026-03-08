@@ -1,5 +1,6 @@
 import { Octokit } from '@octokit/rest';
 import { graphql } from '@octokit/graphql';
+import { InvalidRepoInputError } from '../errors';
 
 export interface GitHubClientConfig {
     token?: string;
@@ -24,12 +25,28 @@ export class GitHubClient {
      * Parses a raw GitHub URL or owner/repo string into owner and repo constituents
      */
     static parseRepoString(input: string): { owner: string; repo: string } {
-        let cleanInput = input.replace(/^(https?:\/\/)?github\.com\//, '');
-        cleanInput = cleanInput.replace(/\.git$/, '');
-        const parts = cleanInput.split('/');
-        if (parts.length >= 2) {
-            return { owner: parts[0], repo: parts[1] };
+        const trimmed = input?.trim();
+        if (!trimmed) {
+            throw new InvalidRepoInputError(input);
         }
-        throw new Error(`Invalid repository format: ${input}. Expected owner/repo or a GitHub URL.`);
+
+        let cleanInput = trimmed
+            .replace(/^(https?:\/\/)?github\.com\//i, '')
+            .replace(/[#?].*$/, '')
+            .replace(/\.git$/i, '')
+            .replace(/\/+$/, '');
+
+        const parts = cleanInput.split('/').filter(Boolean);
+        if (parts.length !== 2) {
+            throw new InvalidRepoInputError(input);
+        }
+
+        const [owner, repo] = parts;
+        const segmentPattern = /^[A-Za-z0-9._-]+$/;
+        if (!segmentPattern.test(owner) || !segmentPattern.test(repo)) {
+            throw new InvalidRepoInputError(input);
+        }
+
+        return { owner, repo };
     }
 }
