@@ -5,7 +5,8 @@
     "types": "dist/index.d.ts",
     "scripts": {
         "build": "tsc",
-        "dev": "tsc -w"
+        "dev": "tsc -w",
+        "test": "npm run build && node --test test/**/*.test.js"
     },
     "dependencies": {
         "@octokit/graphql": "^9.0.3",
