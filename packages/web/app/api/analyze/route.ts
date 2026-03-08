@@ -33,27 +33,68 @@ function setCachedResult(key: string, value: unknown) {
     });
 }
 
-async function analyzeRepository(url: string, branch: string, token?: string) {
-    const resolvedToken = token || process.env.GITHUB_TOKEN;
-    const canUseCache = !token;
-    const authMode = resolvedToken ? "server-auth" : "anon";
-    const cacheKey = `${url.trim().toLowerCase()}@${branch.toLowerCase()}:${authMode}`;
+function getErrorStatus(error: any): number | undefined {
+    return error?.status ?? error?.response?.status;
+}
 
-    if (canUseCache) {
-        const cached = getCachedResult(cacheKey);
-        if (cached) {
-            return cached;
+async function analyzeRepository(url: string, branch: string, token?: string | null) {
+    const hasTokenOverride = token !== undefined;
+    const resolvedToken = hasTokenOverride
+        ? (token ?? "")
+        : (process.env.GITHUB_TOKEN || "");
+
+    const anonKey = `${url.trim().toLowerCase()}@${branch.toLowerCase()}:anon`;
+    const serverAuthKey = `${url.trim().toLowerCase()}@${branch.toLowerCase()}:server-auth`;
+
+    // If no user token is provided, prefer anonymous mode first for public repos.
+    if (!hasTokenOverride) {
+        const cachedAnon = getCachedResult(anonKey);
+        if (cachedAnon) return cachedAnon;
+
+        try {
+            const anonymousAnalyzer = new RepoPulseAnalyzer({ token: null });
+            const anonResult = await anonymousAnalyzer.analyze(url, branch);
+            setCachedResult(anonKey, anonResult);
+            return anonResult;
+        } catch (error: any) {
+            const status = getErrorStatus(error);
+            const canTryServerToken = Boolean(resolvedToken) && (status === 401 || status === 403 || status === 404);
+            if (!canTryServerToken) {
+                throw error;
+            }
         }
+
+        const cachedServer = getCachedResult(serverAuthKey);
+        if (cachedServer) return cachedServer;
+
+        const serverAnalyzer = new RepoPulseAnalyzer({ token: resolvedToken });
+        const serverResult = await serverAnalyzer.analyze(url, branch);
+        setCachedResult(serverAuthKey, serverResult);
+        return serverResult;
     }
 
-    const analyzer = new RepoPulseAnalyzer(resolvedToken);
-    const result = await analyzer.analyze(url, branch);
+    // User explicitly provided token: use it first, then fallback to anonymous for public repos.
+    const explicitAuthKey = `${url.trim().toLowerCase()}@${branch.toLowerCase()}:explicit-auth`;
+    const cachedExplicit = getCachedResult(explicitAuthKey);
+    if (cachedExplicit) return cachedExplicit;
 
-    if (canUseCache) {
-        setCachedResult(cacheKey, result);
+    try {
+        const explicitAnalyzer = new RepoPulseAnalyzer({ token: resolvedToken });
+        const explicitResult = await explicitAnalyzer.analyze(url, branch);
+        setCachedResult(explicitAuthKey, explicitResult);
+        return explicitResult;
+    } catch (error: any) {
+        const status = getErrorStatus(error);
+        if (resolvedToken && (status === 401 || status === 403)) {
+            const cachedAnon = getCachedResult(anonKey);
+            if (cachedAnon) return cachedAnon;
+            const anonymousAnalyzer = new RepoPulseAnalyzer({ token: null });
+            const anonResult = await anonymousAnalyzer.analyze(url, branch);
+            setCachedResult(anonKey, anonResult);
+            return anonResult;
+        }
+        throw error;
     }
-
-    return result;
 }
 
 function toErrorResponse(error: any) {
@@ -61,6 +102,18 @@ function toErrorResponse(error: any) {
     const message = error?.message || "Failed to analyze repository.";
     let body: ApiErrorBody;
     let responseStatus = 500;
+    const lowerMessage = String(message).toLowerCase();
+
+    if (status === 403 && (lowerMessage.includes("rate limit") || lowerMessage.includes("secondary rate limit"))) {
+        body = {
+            error: "GitHub API rate limit reached for unauthenticated requests.",
+            code: "GITHUB_RATE_LIMITED",
+            hint: "Retry later or provide a valid GitHub token to increase rate limits.",
+            recoverable: true
+        };
+        responseStatus = 429;
+        return NextResponse.json(body, { status: responseStatus });
+    }
 
     if (status === 401 || status === 403) {
         body = {
@@ -119,7 +172,18 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: "Missing 'url' in request body." }, { status: 400 });
         }
 
-        const result = await analyzeRepository(url, branch, token || undefined);
+        let result;
+        try {
+            result = await analyzeRepository(url, branch, token || undefined);
+        } catch (error: any) {
+            const status = error?.status;
+            // If a provided token is invalid, retry once without token for public repositories.
+            if (token && (status === 401 || status === 403)) {
+                result = await analyzeRepository(url, branch, null);
+            } else {
+                throw error;
+            }
+        }
         return NextResponse.json(result);
     } catch (error: any) {
         console.error("Analysis Error:", error);
