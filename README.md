@@ -59,11 +59,19 @@ npm start
 The web app exposes:
 ```bash
 GET /api/analyze?url=owner/repo
+POST /api/analyze
 ```
 
 Example:
 ```bash
 curl "http://localhost:3000/api/analyze?url=openai/openai-node"
+```
+
+Private repo example (recommended):
+```bash
+curl -X POST "http://localhost:3000/api/analyze" \
+  -H "Content-Type: application/json" \
+  -d '{"url":"owner/private-repo","token":"ghp_your_token"}'
 ```
 
 ## Reliability Notes

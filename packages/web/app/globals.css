@@ -62,8 +62,9 @@ html, body {
 
 .search-box {
   display: flex;
+  flex-wrap: wrap;
   gap: 1rem;
-  max-width: 600px;
+  max-width: 900px;
   margin: 0 auto 3rem;
 }
 
@@ -101,6 +102,10 @@ html, body {
 
 .search-button:active {
   transform: scale(0.98);
+}
+
+.token-input {
+  min-width: 320px;
 }
 
 .results-grid {
@@ -191,4 +196,14 @@ html, body {
   align-items: center;
   gap: 0.75rem;
   font-size: 1.05rem;
+}
+
+@media (max-width: 768px) {
+  .search-box {
+    flex-direction: column;
+  }
+
+  .token-input {
+    min-width: 0;
+  }
 }

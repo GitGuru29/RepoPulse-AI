@@ -25,6 +25,7 @@ function recommendationLevel(rec: string): RiskLevel {
 
 export default function Home() {
     const [repo, setRepo] = useState("");
+    const [token, setToken] = useState("");
     const [loading, setLoading] = useState(false);
     const [result, setResult] = useState<any>(null); // Normally typed from @repopulse/core
     const [error, setError] = useState<string | null>(null);
@@ -38,7 +39,16 @@ export default function Home() {
         setResult(null);
 
         try {
-            const response = await fetch(`/api/analyze?url=${encodeURIComponent(repo)}`);
+            const response = await fetch("/api/analyze", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    url: repo,
+                    token: token || undefined
+                })
+            });
             const data = await response.json();
 
             if (!response.ok) {
@@ -67,6 +77,14 @@ export default function Home() {
                     placeholder="https://github.com/owner/repo"
                     value={repo}
                     onChange={(e) => setRepo(e.target.value)}
+                />
+                <input
+                    type="password"
+                    className="search-input token-input"
+                    placeholder="GitHub token (optional, required for private repos)"
+                    value={token}
+                    onChange={(e) => setToken(e.target.value)}
+                    autoComplete="off"
                 />
                 <button type="submit" className="search-button" disabled={loading}>
                     {loading ? "Analyzing..." : "Analyze"}
