@@ -23,6 +23,11 @@ function recommendationLevel(rec: string): RiskLevel {
     return "low";
 }
 
+function languagePalette(index: number): string {
+    const colors = ["#2563eb", "#f59e0b", "#16a34a", "#dc2626", "#7c3aed", "#0891b2", "#ea580c", "#4f46e5"];
+    return colors[index % colors.length];
+}
+
 export default function Home() {
     const [repo, setRepo] = useState("");
     const [token, setToken] = useState("");
@@ -99,6 +104,58 @@ export default function Home() {
 
             {result && (
                 <div className="results-grid">
+                    {(() => {
+                        const languageEntries = Object.entries(result.languages || {});
+                        const totalBytes = languageEntries.reduce((sum: number, [, data]: [string, any]) => sum + (data?.bytes || 0), 0);
+                        const topLanguages = languageEntries
+                            .map(([name, data]: [string, any]) => ({
+                                name,
+                                bytes: data?.bytes || 0
+                            }))
+                            .sort((a, b) => b.bytes - a.bytes)
+                            .slice(0, 6)
+                            .map((lang) => ({
+                                ...lang,
+                                percent: totalBytes > 0 ? Number(((lang.bytes / totalBytes) * 100).toFixed(1)) : 0
+                            }));
+
+                        return (
+                            <div className="card" style={{ gridColumn: "1 / -1" }}>
+                                <h3>Language Stack</h3>
+                                {topLanguages.length > 0 ? (
+                                    <>
+                                        <div className="language-stack-bar">
+                                            {topLanguages.map((lang, index) => (
+                                                <div
+                                                    key={lang.name}
+                                                    className="language-stack-segment"
+                                                    style={{
+                                                        width: `${lang.percent}%`,
+                                                        backgroundColor: languagePalette(index)
+                                                    }}
+                                                    title={`${lang.name}: ${lang.percent}%`}
+                                                />
+                                            ))}
+                                        </div>
+                                        <ul className="language-list">
+                                            {topLanguages.map((lang, index) => (
+                                                <li key={lang.name}>
+                                                    <span className="language-name">
+                                                        <span className="language-dot" style={{ backgroundColor: languagePalette(index) }} />
+                                                        {lang.name}
+                                                    </span>
+                                                    <strong>{lang.percent}%</strong>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </>
+                                ) : (
+                                    <p>No language data available.</p>
+                                )}
+                            </div>
+                        );
+                    })()}
+
                     <div className="card">
                         <h3>Health Score</h3>
                         <div className="score">{result.healthScore}/100</div>
