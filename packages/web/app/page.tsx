@@ -31,6 +31,7 @@ function languagePalette(index: number): string {
 export default function Home() {
     const [repo, setRepo] = useState("");
     const [token, setToken] = useState("");
+    const [branch, setBranch] = useState("");
     const [loading, setLoading] = useState(false);
     const [result, setResult] = useState<any>(null); // Normally typed from @repopulse/core
     const [error, setError] = useState<string | null>(null);
@@ -51,7 +52,8 @@ export default function Home() {
                 },
                 body: JSON.stringify({
                     url: repo,
-                    token: token || undefined
+                    token: token || undefined,
+                    branch: branch || undefined
                 })
             });
             const data = await response.json();
@@ -90,6 +92,13 @@ export default function Home() {
                     value={token}
                     onChange={(e) => setToken(e.target.value)}
                     autoComplete="off"
+                />
+                <input
+                    type="text"
+                    className="search-input branch-input"
+                    placeholder="Branch/tag (optional, default: HEAD)"
+                    value={branch}
+                    onChange={(e) => setBranch(e.target.value)}
                 />
                 <button type="submit" className="search-button" disabled={loading}>
                     {loading ? "Analyzing..." : "Analyze"}

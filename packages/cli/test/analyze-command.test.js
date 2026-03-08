@@ -13,6 +13,7 @@ test('CLI smoke test: analyze command help renders successfully', () => {
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /Analyze a GitHub repository/i);
     assert.match(result.stdout, /Usage:/i);
+    assert.match(result.stdout, /--branch/i);
     assert.match(result.stdout, /--json/i);
     assert.match(result.stdout, /--token/i);
 });

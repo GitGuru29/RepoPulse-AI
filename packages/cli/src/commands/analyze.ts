@@ -7,15 +7,16 @@ import { RepoPulseAnalyzer } from '@repopulse/core';
 export const analyzeCommand = new Command('analyze')
     .description('Analyze a GitHub repository')
     .arguments('<url>')
+    .option('-b, --branch <branch>', 'Branch/tag/ref to analyze (default: HEAD)')
     .option('-t, --token <token>', 'GitHub token (overrides GITHUB_TOKEN)')
     .option('--json', 'Output raw JSON instead of formatted tables')
     .option('--compact', 'Use compact JSON output with --json')
-    .action(async (url: string, options: { token?: string; json?: boolean; compact?: boolean }) => {
+    .action(async (url: string, options: { branch?: string; token?: string; json?: boolean; compact?: boolean }) => {
         const spinner = options.json ? null : ora('Analyzing repository...').start();
 
         try {
             const analyzer = new RepoPulseAnalyzer(options.token || process.env.GITHUB_TOKEN);
-            const result = await analyzer.analyze(url);
+            const result = await analyzer.analyze(url, options.branch || 'HEAD');
 
             if (options.json) {
                 const spacing = options.compact ? 0 : 2;

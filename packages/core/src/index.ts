@@ -105,11 +105,13 @@ export class RepoPulseAnalyzer {
         this.hasAuthToken = Boolean(resolvedToken && resolvedToken.trim());
     }
 
-    public async analyze(repoInput: string): Promise<RepoPulseAnalysisResult> {
+    public async analyze(repoInput: string, ref: string = 'HEAD'): Promise<RepoPulseAnalysisResult> {
         const startedAt = Date.now();
         try {
             const { owner, repo } = GitHubClient.parseRepoString(repoInput);
-            const repoKey = `${owner}/${repo}`.toLowerCase();
+            const normalizedRef = (ref || 'HEAD').trim() || 'HEAD';
+            const authMode = this.hasAuthToken ? 'auth' : 'anon';
+            const repoKey = `${owner}/${repo}@${normalizedRef}:${authMode}`.toLowerCase();
             const cachedResult = this.getCachedResult(repoKey);
             if (cachedResult) {
                 this.log('info', {
@@ -128,7 +130,7 @@ export class RepoPulseAnalyzer {
                 this.fetchContributors(owner, repo),
                 this.fetchPRHealth(owner, repo),
                 this.fetchIssueHealth(owner, repo),
-                this.fetchDependencySignals(owner, repo)
+                this.fetchDependencySignals(owner, repo, normalizedRef)
             ]);
 
             const risks = this.calculateRisks(stats, contributors, pullRequests, issues, dependencySignals);
@@ -331,33 +333,70 @@ export class RepoPulseAnalyzer {
         }
     }
 
-    private async fetchDependencySignals(owner: string, repo: string): Promise<DependencySignals> {
+    private async fetchDependencySignals(owner: string, repo: string, ref: string): Promise<DependencySignals> {
         const query = `
-        query dependencySignals($owner: String!, $repo: String!) {
+        query dependencySignals(
+          $owner: String!,
+          $repo: String!,
+          $packageJsonExpr: String!,
+          $packageLockExpr: String!,
+          $yarnLockExpr: String!,
+          $pnpmLockExpr: String!,
+          $requirementsTxtExpr: String!,
+          $pipfileExpr: String!,
+          $poetryLockExpr: String!,
+          $goModExpr: String!,
+          $cargoTomlExpr: String!,
+          $pomXmlExpr: String!,
+          $gradleBuildExpr: String!,
+          $gemfileExpr: String!,
+          $composerJsonExpr: String!,
+          $dependabotYmlExpr: String!,
+          $dependabotYamlExpr: String!
+        ) {
           repository(owner: $owner, name: $repo) {
-            packageJson: object(expression: "HEAD:package.json") { __typename }
-            packageLock: object(expression: "HEAD:package-lock.json") { __typename }
-            yarnLock: object(expression: "HEAD:yarn.lock") { __typename }
-            pnpmLock: object(expression: "HEAD:pnpm-lock.yaml") { __typename }
-            requirementsTxt: object(expression: "HEAD:requirements.txt") { __typename }
-            pipfile: object(expression: "HEAD:Pipfile") { __typename }
-            poetryLock: object(expression: "HEAD:poetry.lock") { __typename }
-            goMod: object(expression: "HEAD:go.mod") { __typename }
-            cargoToml: object(expression: "HEAD:Cargo.toml") { __typename }
-            pomXml: object(expression: "HEAD:pom.xml") { __typename }
-            gradleBuild: object(expression: "HEAD:build.gradle") { __typename }
-            gemfile: object(expression: "HEAD:Gemfile") { __typename }
-            composerJson: object(expression: "HEAD:composer.json") { __typename }
-            dependabotYml: object(expression: "HEAD:.github/dependabot.yml") { __typename }
-            dependabotYaml: object(expression: "HEAD:.github/dependabot.yaml") { __typename }
+            packageJson: object(expression: $packageJsonExpr) { __typename }
+            packageLock: object(expression: $packageLockExpr) { __typename }
+            yarnLock: object(expression: $yarnLockExpr) { __typename }
+            pnpmLock: object(expression: $pnpmLockExpr) { __typename }
+            requirementsTxt: object(expression: $requirementsTxtExpr) { __typename }
+            pipfile: object(expression: $pipfileExpr) { __typename }
+            poetryLock: object(expression: $poetryLockExpr) { __typename }
+            goMod: object(expression: $goModExpr) { __typename }
+            cargoToml: object(expression: $cargoTomlExpr) { __typename }
+            pomXml: object(expression: $pomXmlExpr) { __typename }
+            gradleBuild: object(expression: $gradleBuildExpr) { __typename }
+            gemfile: object(expression: $gemfileExpr) { __typename }
+            composerJson: object(expression: $composerJsonExpr) { __typename }
+            dependabotYml: object(expression: $dependabotYmlExpr) { __typename }
+            dependabotYaml: object(expression: $dependabotYamlExpr) { __typename }
           }
         }
         `;
 
         try {
+            const expression = (path: string) => `${ref}:${path}`;
             const data = await this.executeGitHubCall(
-                `graphql.dependencySignals:${owner}/${repo}`,
-                () => this.client.graphql<DependencySignalsQueryResult>(query, { owner, repo })
+                `graphql.dependencySignals:${owner}/${repo}@${ref}`,
+                () => this.client.graphql<DependencySignalsQueryResult>(query, {
+                    owner,
+                    repo,
+                    packageJsonExpr: expression('package.json'),
+                    packageLockExpr: expression('package-lock.json'),
+                    yarnLockExpr: expression('yarn.lock'),
+                    pnpmLockExpr: expression('pnpm-lock.yaml'),
+                    requirementsTxtExpr: expression('requirements.txt'),
+                    pipfileExpr: expression('Pipfile'),
+                    poetryLockExpr: expression('poetry.lock'),
+                    goModExpr: expression('go.mod'),
+                    cargoTomlExpr: expression('Cargo.toml'),
+                    pomXmlExpr: expression('pom.xml'),
+                    gradleBuildExpr: expression('build.gradle'),
+                    gemfileExpr: expression('Gemfile'),
+                    composerJsonExpr: expression('composer.json'),
+                    dependabotYmlExpr: expression('.github/dependabot.yml'),
+                    dependabotYamlExpr: expression('.github/dependabot.yaml')
+                })
             );
             const repoData = data.repository;
             if (!repoData) {
@@ -391,7 +430,7 @@ export class RepoPulseAnalyzer {
                     event: 'analysis.public_fallback',
                     message: 'GraphQL auth unavailable; using REST fallback for dependency signals.'
                 });
-                return this.fetchDependencySignalsRest(owner, repo);
+                return this.fetchDependencySignalsRest(owner, repo, ref);
             }
             throw this.toGitHubApiError(error, `Failed to fetch dependency signals for ${owner}/${repo}`);
         }
@@ -461,7 +500,7 @@ export class RepoPulseAnalyzer {
         };
     }
 
-    private async fetchDependencySignalsRest(owner: string, repo: string): Promise<DependencySignals> {
+    private async fetchDependencySignalsRest(owner: string, repo: string, ref: string): Promise<DependencySignals> {
         const [
             packageJson,
             packageLock,
@@ -479,21 +518,21 @@ export class RepoPulseAnalyzer {
             dependabotYml,
             dependabotYaml
         ] = await Promise.all([
-            this.repoPathExists(owner, repo, 'package.json'),
-            this.repoPathExists(owner, repo, 'package-lock.json'),
-            this.repoPathExists(owner, repo, 'yarn.lock'),
-            this.repoPathExists(owner, repo, 'pnpm-lock.yaml'),
-            this.repoPathExists(owner, repo, 'requirements.txt'),
-            this.repoPathExists(owner, repo, 'Pipfile'),
-            this.repoPathExists(owner, repo, 'poetry.lock'),
-            this.repoPathExists(owner, repo, 'go.mod'),
-            this.repoPathExists(owner, repo, 'Cargo.toml'),
-            this.repoPathExists(owner, repo, 'pom.xml'),
-            this.repoPathExists(owner, repo, 'build.gradle'),
-            this.repoPathExists(owner, repo, 'Gemfile'),
-            this.repoPathExists(owner, repo, 'composer.json'),
-            this.repoPathExists(owner, repo, '.github/dependabot.yml'),
-            this.repoPathExists(owner, repo, '.github/dependabot.yaml')
+            this.repoPathExists(owner, repo, 'package.json', ref),
+            this.repoPathExists(owner, repo, 'package-lock.json', ref),
+            this.repoPathExists(owner, repo, 'yarn.lock', ref),
+            this.repoPathExists(owner, repo, 'pnpm-lock.yaml', ref),
+            this.repoPathExists(owner, repo, 'requirements.txt', ref),
+            this.repoPathExists(owner, repo, 'Pipfile', ref),
+            this.repoPathExists(owner, repo, 'poetry.lock', ref),
+            this.repoPathExists(owner, repo, 'go.mod', ref),
+            this.repoPathExists(owner, repo, 'Cargo.toml', ref),
+            this.repoPathExists(owner, repo, 'pom.xml', ref),
+            this.repoPathExists(owner, repo, 'build.gradle', ref),
+            this.repoPathExists(owner, repo, 'Gemfile', ref),
+            this.repoPathExists(owner, repo, 'composer.json', ref),
+            this.repoPathExists(owner, repo, '.github/dependabot.yml', ref),
+            this.repoPathExists(owner, repo, '.github/dependabot.yaml', ref)
         ]);
 
         const hasManifest = {
@@ -514,12 +553,12 @@ export class RepoPulseAnalyzer {
         return { hasLockfile, hasDependabotConfig, ecosystemCount, manifestCount };
     }
 
-    private async repoPathExists(owner: string, repo: string, path: string): Promise<boolean> {
+    private async repoPathExists(owner: string, repo: string, path: string, ref: string): Promise<boolean> {
         try {
             await this.withTimeout(
-                this.client.rest.repos.getContent({ owner, repo, path, ref: 'HEAD' }),
+                this.client.rest.repos.getContent({ owner, repo, path, ref }),
                 this.requestTimeoutMs,
-                `repos.getContent:${owner}/${repo}:${path} timed out after ${this.requestTimeoutMs}ms`
+                `repos.getContent:${owner}/${repo}@${ref}:${path} timed out after ${this.requestTimeoutMs}ms`
             );
             return true;
         } catch (error: unknown) {

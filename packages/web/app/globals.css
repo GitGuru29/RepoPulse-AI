@@ -108,6 +108,10 @@ html, body {
   min-width: 320px;
 }
 
+.branch-input {
+  min-width: 220px;
+}
+
 .results-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
@@ -251,6 +255,10 @@ html, body {
   }
 
   .token-input {
+    min-width: 0;
+  }
+
+  .branch-input {
     min-width: 0;
   }
 }

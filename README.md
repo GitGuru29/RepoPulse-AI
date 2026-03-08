@@ -47,6 +47,7 @@ cd packages/cli
 npm run build
 node dist/index.js analyze openai/openai-node
 node dist/index.js analyze openai/openai-node --json
+node dist/index.js analyze openai/openai-node --branch main
 node dist/index.js analyze owner/private-repo --token ghp_your_token
 ```
 
@@ -62,18 +63,27 @@ The web app exposes:
 ```bash
 GET /api/analyze?url=owner/repo
 POST /api/analyze
+POST /api/token/verify
 ```
 
 Example:
 ```bash
 curl "http://localhost:3000/api/analyze?url=openai/openai-node"
+curl "http://localhost:3000/api/analyze?url=openai/openai-node&branch=main"
 ```
 
 Private repo example (recommended):
 ```bash
 curl -X POST "http://localhost:3000/api/analyze" \
   -H "Content-Type: application/json" \
-  -d '{"url":"owner/private-repo","token":"ghp_your_token"}'
+  -d '{"url":"owner/private-repo","token":"ghp_your_token","branch":"main"}'
+```
+
+Token preflight example:
+```bash
+curl -X POST "http://localhost:3000/api/token/verify" \
+  -H "Content-Type: application/json" \
+  -d '{"token":"ghp_your_token"}'
 ```
 
 ## Reliability Notes
