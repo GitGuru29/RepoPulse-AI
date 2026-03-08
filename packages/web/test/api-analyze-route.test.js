@@ -114,7 +114,7 @@ test('GET /api/analyze returns 500 when analyzer throws', async () => {
     };
 
     try {
-        const request = new NextRequest('http://localhost/api/analyze?url=openai/openai-node');
+        const request = new NextRequest('http://localhost/api/analyze?url=openai/openai-node-cache-bypass');
         const response = await GET(request);
         const body = await response.json();
 

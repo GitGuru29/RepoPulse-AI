@@ -52,16 +52,71 @@ interface DependencySignals {
     manifestCount: number;
 }
 
-export class RepoPulseAnalyzer {
-    private client: GitHubClient;
+type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
-    constructor(token?: string) {
-        this.client = new GitHubClient({ token });
+interface LogEntry {
+    event: string;
+    message: string;
+    repo?: string;
+    durationMs?: number;
+    attempt?: number;
+    maxAttempts?: number;
+    code?: string;
+    status?: number;
+}
+
+interface RepoPulseAnalyzerOptions {
+    token?: string;
+    cacheTtlMs?: number;
+    requestTimeoutMs?: number;
+    retryCount?: number;
+    retryDelayMs?: number;
+    logger?: (level: LogLevel, entry: LogEntry) => void;
+}
+
+export class RepoPulseAnalyzer {
+    private static readonly analysisCache = new Map<string, { expiresAt: number; result: RepoPulseAnalysisResult }>();
+    private static readonly DEFAULT_CACHE_TTL_MS = 120_000;
+    private static readonly DEFAULT_REQUEST_TIMEOUT_MS = 12_000;
+    private static readonly DEFAULT_RETRY_COUNT = 2;
+    private static readonly DEFAULT_RETRY_DELAY_MS = 300;
+
+    private client: GitHubClient;
+    private cacheTtlMs: number;
+    private requestTimeoutMs: number;
+    private retryCount: number;
+    private retryDelayMs: number;
+    private logger?: (level: LogLevel, entry: LogEntry) => void;
+
+    constructor(optionsOrToken?: RepoPulseAnalyzerOptions | string) {
+        const options: RepoPulseAnalyzerOptions =
+            typeof optionsOrToken === 'string'
+                ? { token: optionsOrToken }
+                : (optionsOrToken || {});
+
+        this.client = new GitHubClient({ token: options.token });
+        this.cacheTtlMs = options.cacheTtlMs ?? RepoPulseAnalyzer.DEFAULT_CACHE_TTL_MS;
+        this.requestTimeoutMs = options.requestTimeoutMs ?? RepoPulseAnalyzer.DEFAULT_REQUEST_TIMEOUT_MS;
+        this.retryCount = options.retryCount ?? RepoPulseAnalyzer.DEFAULT_RETRY_COUNT;
+        this.retryDelayMs = options.retryDelayMs ?? RepoPulseAnalyzer.DEFAULT_RETRY_DELAY_MS;
+        this.logger = options.logger;
     }
 
     public async analyze(repoInput: string): Promise<RepoPulseAnalysisResult> {
+        const startedAt = Date.now();
         try {
             const { owner, repo } = GitHubClient.parseRepoString(repoInput);
+            const repoKey = `${owner}/${repo}`.toLowerCase();
+            const cachedResult = this.getCachedResult(repoKey);
+            if (cachedResult) {
+                this.log('info', {
+                    event: 'analysis.cache_hit',
+                    message: 'Returning cached analysis result.',
+                    repo: repoKey,
+                    durationMs: Date.now() - startedAt
+                });
+                return cachedResult;
+            }
 
             // Fetch all required data concurrently
             const [stats, languages, contributors, pullRequests, issues, dependencySignals] = await Promise.all([
@@ -77,7 +132,7 @@ export class RepoPulseAnalyzer {
             const healthScore = this.calculateHealthScore(stats, contributors, pullRequests, issues, risks);
             const recommendations = this.generateRecommendations(healthScore, risks, pullRequests, issues);
 
-            return {
+            const result: RepoPulseAnalysisResult = {
                 stats,
                 languages,
                 contributors,
@@ -87,7 +142,22 @@ export class RepoPulseAnalyzer {
                 healthScore,
                 recommendations
             };
+            this.setCachedResult(repoKey, result);
+            this.log('info', {
+                event: 'analysis.success',
+                message: 'Repository analysis completed successfully.',
+                repo: repoKey,
+                durationMs: Date.now() - startedAt
+            });
+            return result;
         } catch (error: unknown) {
+            this.log('error', {
+                event: 'analysis.failure',
+                message: 'Repository analysis failed.',
+                durationMs: Date.now() - startedAt,
+                code: (error as { code?: string })?.code,
+                status: (error as { status?: number })?.status
+            });
             if (error instanceof AnalysisError || error instanceof GitHubApiError) {
                 throw error;
             }
@@ -97,7 +167,10 @@ export class RepoPulseAnalyzer {
 
     private async fetchRepoStats(owner: string, repo: string): Promise<RepoStats> {
         try {
-            const { data } = await this.client.rest.repos.get({ owner, repo });
+            const { data } = await this.executeGitHubCall(
+                `repos.get:${owner}/${repo}`,
+                () => this.client.rest.repos.get({ owner, repo })
+            );
             return {
                 owner: data.owner.login,
                 repo: data.name,
@@ -116,7 +189,10 @@ export class RepoPulseAnalyzer {
 
     private async fetchLanguages(owner: string, repo: string): Promise<LanguageBreakdown> {
         try {
-            const { data } = await this.client.rest.repos.listLanguages({ owner, repo });
+            const { data } = await this.executeGitHubCall(
+                `repos.listLanguages:${owner}/${repo}`,
+                () => this.client.rest.repos.listLanguages({ owner, repo })
+            );
             const breakdown: LanguageBreakdown = {};
             for (const [lang, bytes] of Object.entries(data)) {
                 breakdown[lang] = { bytes, color: null };
@@ -130,7 +206,10 @@ export class RepoPulseAnalyzer {
     private async fetchContributors(owner: string, repo: string): Promise<ContributorActivity> {
         try {
             // Get top 100 contributors
-            const { data } = await this.client.rest.repos.listContributors({ owner, repo, per_page: 100 });
+            const { data } = await this.executeGitHubCall(
+                `repos.listContributors:${owner}/${repo}`,
+                () => this.client.rest.repos.listContributors({ owner, repo, per_page: 100 })
+            );
 
             let totalCommits = 0;
             const topContributors = [];
@@ -175,7 +254,10 @@ export class RepoPulseAnalyzer {
         `;
 
         try {
-            const data = await this.client.graphql<PullRequestHealthQueryResult>(query, { owner, repo, staleDate: thirtyDaysAgo });
+            const data = await this.executeGitHubCall(
+                `graphql.pullRequestHealth:${owner}/${repo}`,
+                () => this.client.graphql<PullRequestHealthQueryResult>(query, { owner, repo, staleDate: thirtyDaysAgo })
+            );
             const repoData = data.repository;
             if (!repoData) {
                 throw new Error('Repository not found.');
@@ -214,7 +296,10 @@ export class RepoPulseAnalyzer {
         `;
 
         try {
-            const data = await this.client.graphql<IssueHealthQueryResult>(query, { owner, repo, staleDate: thirtyDaysAgo });
+            const data = await this.executeGitHubCall(
+                `graphql.issueHealth:${owner}/${repo}`,
+                () => this.client.graphql<IssueHealthQueryResult>(query, { owner, repo, staleDate: thirtyDaysAgo })
+            );
             const repoData = data.repository;
             if (!repoData) {
                 throw new Error('Repository not found.');
@@ -253,7 +338,10 @@ export class RepoPulseAnalyzer {
         `;
 
         try {
-            const data = await this.client.graphql<DependencySignalsQueryResult>(query, { owner, repo });
+            const data = await this.executeGitHubCall(
+                `graphql.dependencySignals:${owner}/${repo}`,
+                () => this.client.graphql<DependencySignalsQueryResult>(query, { owner, repo })
+            );
             const repoData = data.repository;
             if (!repoData) {
                 throw new Error('Repository not found.');
@@ -367,5 +455,110 @@ export class RepoPulseAnalyzer {
         const status = err.status ?? err.response?.status;
         const apiMessage = err.response?.data?.message || err.message || 'Unknown GitHub API error';
         return new GitHubApiError(`${context}: ${apiMessage}`, status, error);
+    }
+
+    private async executeGitHubCall<T>(operation: string, task: () => Promise<T>): Promise<T> {
+        return this.withRetry(operation, async () => {
+            return this.withTimeout(task(), this.requestTimeoutMs, `${operation} timed out after ${this.requestTimeoutMs}ms`);
+        });
+    }
+
+    private async withRetry<T>(operation: string, task: () => Promise<T>): Promise<T> {
+        let lastError: unknown;
+        const maxAttempts = this.retryCount + 1;
+
+        for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+            try {
+                return await task();
+            } catch (error: unknown) {
+                lastError = error;
+                const retriable = this.isRetriableError(error);
+                const shouldRetry = retriable && attempt < maxAttempts;
+
+                this.log(shouldRetry ? 'warn' : 'error', {
+                    event: 'github.call_failed',
+                    message: shouldRetry ? 'GitHub call failed, retrying.' : 'GitHub call failed.',
+                    attempt,
+                    maxAttempts,
+                    code: (error as { code?: string })?.code,
+                    status: (error as { status?: number })?.status
+                });
+
+                if (!shouldRetry) {
+                    break;
+                }
+
+                const backoffMs = this.retryDelayMs * Math.pow(2, attempt - 1);
+                await this.sleep(backoffMs);
+            }
+        }
+
+        throw lastError;
+    }
+
+    private withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
+        return new Promise<T>((resolve, reject) => {
+            const timeout = setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
+
+            promise
+                .then((result) => resolve(result))
+                .catch((error) => reject(error))
+                .finally(() => clearTimeout(timeout));
+        });
+    }
+
+    private isRetriableError(error: unknown): boolean {
+        const status = (error as { status?: number; response?: { status?: number } })?.status ??
+            (error as { response?: { status?: number } })?.response?.status;
+        if (status && [429, 500, 502, 503, 504].includes(status)) {
+            return true;
+        }
+
+        const message = String((error as { message?: string })?.message || '').toLowerCase();
+        return (
+            message.includes('timed out') ||
+            message.includes('fetch failed') ||
+            message.includes('enotfound') ||
+            message.includes('eai_again') ||
+            message.includes('econnreset') ||
+            message.includes('etimedout')
+        );
+    }
+
+    private getCachedResult(key: string): RepoPulseAnalysisResult | null {
+        const now = Date.now();
+        const cached = RepoPulseAnalyzer.analysisCache.get(key);
+        if (!cached) {
+            return null;
+        }
+        if (cached.expiresAt <= now) {
+            RepoPulseAnalyzer.analysisCache.delete(key);
+            return null;
+        }
+        return cached.result;
+    }
+
+    private setCachedResult(key: string, result: RepoPulseAnalysisResult): void {
+        RepoPulseAnalyzer.analysisCache.set(key, {
+            result,
+            expiresAt: Date.now() + this.cacheTtlMs
+        });
+    }
+
+    private sleep(ms: number): Promise<void> {
+        return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
+    private log(level: LogLevel, entry: LogEntry): void {
+        if (this.logger) {
+            this.logger(level, entry);
+            return;
+        }
+
+        if (level === 'error') {
+            console.error(`[RepoPulse][${entry.event}] ${entry.message}`, entry);
+        } else if (level === 'warn' && process.env.REPOPULSE_DEBUG === 'true') {
+            console.warn(`[RepoPulse][${entry.event}] ${entry.message}`, entry);
+        }
     }
 }
