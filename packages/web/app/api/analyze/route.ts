@@ -33,9 +33,12 @@ function setCachedResult(key: string, value: unknown) {
     });
 }
 
-async function analyzeRepository(url: string, branch: string, token?: string) {
-    const resolvedToken = token || process.env.GITHUB_TOKEN;
-    const canUseCache = !token;
+async function analyzeRepository(url: string, branch: string, token?: string | null) {
+    const hasTokenOverride = token !== undefined;
+    const resolvedToken = hasTokenOverride
+        ? (token ?? "")
+        : (process.env.GITHUB_TOKEN || "");
+    const canUseCache = !hasTokenOverride || !resolvedToken;
     const authMode = resolvedToken ? "server-auth" : "anon";
     const cacheKey = `${url.trim().toLowerCase()}@${branch.toLowerCase()}:${authMode}`;
 
@@ -46,7 +49,9 @@ async function analyzeRepository(url: string, branch: string, token?: string) {
         }
     }
 
-    const analyzer = new RepoPulseAnalyzer(resolvedToken);
+    const analyzer = hasTokenOverride
+        ? new RepoPulseAnalyzer({ token: resolvedToken })
+        : new RepoPulseAnalyzer(process.env.GITHUB_TOKEN);
     const result = await analyzer.analyze(url, branch);
 
     if (canUseCache) {
@@ -126,7 +131,7 @@ export async function POST(request: NextRequest) {
             const status = error?.status;
             // If a provided token is invalid, retry once without token for public repositories.
             if (token && (status === 401 || status === 403)) {
-                result = await analyzeRepository(url, branch, undefined);
+                result = await analyzeRepository(url, branch, null);
             } else {
                 throw error;
             }

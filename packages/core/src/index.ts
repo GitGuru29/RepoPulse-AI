@@ -66,7 +66,7 @@ interface LogEntry {
 }
 
 interface RepoPulseAnalyzerOptions {
-    token?: string;
+    token?: string | null;
     cacheTtlMs?: number;
     requestTimeoutMs?: number;
     retryCount?: number;
@@ -104,9 +104,12 @@ export class RepoPulseAnalyzer {
             typeof optionsOrToken === 'string'
                 ? { token: optionsOrToken }
                 : (optionsOrToken || {});
-        const resolvedToken = options.token || process.env.GITHUB_TOKEN;
+        const hasTokenOverride = Object.prototype.hasOwnProperty.call(options, 'token');
+        const resolvedToken = hasTokenOverride
+            ? (options.token ?? '')
+            : (process.env.GITHUB_TOKEN || '');
 
-        this.client = new GitHubClient({ token: options.token });
+        this.client = new GitHubClient({ token: resolvedToken });
         this.cacheTtlMs = options.cacheTtlMs ?? RepoPulseAnalyzer.DEFAULT_CACHE_TTL_MS;
         this.requestTimeoutMs = options.requestTimeoutMs ?? RepoPulseAnalyzer.DEFAULT_REQUEST_TIMEOUT_MS;
         this.retryCount = options.retryCount ?? RepoPulseAnalyzer.DEFAULT_RETRY_COUNT;

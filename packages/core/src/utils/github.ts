@@ -3,7 +3,7 @@ import { graphql } from '@octokit/graphql';
 import { InvalidRepoInputError } from '../errors';
 
 export interface GitHubClientConfig {
-    token?: string;
+    token?: string | null;
 }
 
 export class GitHubClient {
@@ -11,7 +11,10 @@ export class GitHubClient {
     public graphql: typeof graphql;
 
     constructor(config?: GitHubClientConfig) {
-        const auth = config?.token || process.env.GITHUB_TOKEN;
+        const hasTokenOverride = Boolean(config && Object.prototype.hasOwnProperty.call(config, 'token'));
+        const auth = hasTokenOverride
+            ? (config?.token ?? '')
+            : (process.env.GITHUB_TOKEN || '');
 
         this.rest = new Octokit({ auth });
         this.graphql = graphql.defaults({
