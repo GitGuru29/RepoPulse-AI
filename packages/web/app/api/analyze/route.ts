@@ -33,51 +33,68 @@ function setCachedResult(key: string, value: unknown) {
     });
 }
 
+function getErrorStatus(error: any): number | undefined {
+    return error?.status ?? error?.response?.status;
+}
+
 async function analyzeRepository(url: string, branch: string, token?: string | null) {
     const hasTokenOverride = token !== undefined;
     const resolvedToken = hasTokenOverride
         ? (token ?? "")
         : (process.env.GITHUB_TOKEN || "");
-    const canUseCache = !hasTokenOverride || !resolvedToken;
-    const authMode = resolvedToken ? "server-auth" : "anon";
-    const cacheKey = `${url.trim().toLowerCase()}@${branch.toLowerCase()}:${authMode}`;
 
-    if (canUseCache) {
-        const cached = getCachedResult(cacheKey);
-        if (cached) {
-            return cached;
-        }
-    }
+    const anonKey = `${url.trim().toLowerCase()}@${branch.toLowerCase()}:anon`;
+    const serverAuthKey = `${url.trim().toLowerCase()}@${branch.toLowerCase()}:server-auth`;
 
-    const analyzer = hasTokenOverride
-        ? new RepoPulseAnalyzer({ token: resolvedToken })
-        : new RepoPulseAnalyzer(process.env.GITHUB_TOKEN);
-    let result;
-    try {
-        result = await analyzer.analyze(url, branch);
-    } catch (error: any) {
-        const status = error?.status;
-        // If authenticated attempt fails, retry anonymously once for public repositories.
-        if (resolvedToken && (status === 401 || status === 403)) {
-            const anonymousCacheKey = `${url.trim().toLowerCase()}@${branch.toLowerCase()}:anon`;
-            const cachedAnon = getCachedResult(anonymousCacheKey);
-            if (cachedAnon) {
-                return cachedAnon;
-            }
+    // If no user token is provided, prefer anonymous mode first for public repos.
+    if (!hasTokenOverride) {
+        const cachedAnon = getCachedResult(anonKey);
+        if (cachedAnon) return cachedAnon;
 
+        try {
             const anonymousAnalyzer = new RepoPulseAnalyzer({ token: null });
-            result = await anonymousAnalyzer.analyze(url, branch);
-            setCachedResult(anonymousCacheKey, result);
-        } else {
-            throw error;
+            const anonResult = await anonymousAnalyzer.analyze(url, branch);
+            setCachedResult(anonKey, anonResult);
+            return anonResult;
+        } catch (error: any) {
+            const status = getErrorStatus(error);
+            const canTryServerToken = Boolean(resolvedToken) && (status === 401 || status === 403 || status === 404);
+            if (!canTryServerToken) {
+                throw error;
+            }
         }
+
+        const cachedServer = getCachedResult(serverAuthKey);
+        if (cachedServer) return cachedServer;
+
+        const serverAnalyzer = new RepoPulseAnalyzer({ token: resolvedToken });
+        const serverResult = await serverAnalyzer.analyze(url, branch);
+        setCachedResult(serverAuthKey, serverResult);
+        return serverResult;
     }
 
-    if (canUseCache) {
-        setCachedResult(cacheKey, result);
-    }
+    // User explicitly provided token: use it first, then fallback to anonymous for public repos.
+    const explicitAuthKey = `${url.trim().toLowerCase()}@${branch.toLowerCase()}:explicit-auth`;
+    const cachedExplicit = getCachedResult(explicitAuthKey);
+    if (cachedExplicit) return cachedExplicit;
 
-    return result;
+    try {
+        const explicitAnalyzer = new RepoPulseAnalyzer({ token: resolvedToken });
+        const explicitResult = await explicitAnalyzer.analyze(url, branch);
+        setCachedResult(explicitAuthKey, explicitResult);
+        return explicitResult;
+    } catch (error: any) {
+        const status = getErrorStatus(error);
+        if (resolvedToken && (status === 401 || status === 403)) {
+            const cachedAnon = getCachedResult(anonKey);
+            if (cachedAnon) return cachedAnon;
+            const anonymousAnalyzer = new RepoPulseAnalyzer({ token: null });
+            const anonResult = await anonymousAnalyzer.analyze(url, branch);
+            setCachedResult(anonKey, anonResult);
+            return anonResult;
+        }
+        throw error;
+    }
 }
 
 function toErrorResponse(error: any) {
