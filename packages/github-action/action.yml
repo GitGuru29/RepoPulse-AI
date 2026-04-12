@@ -1,0 +1,11 @@
+name: 'RepoPulse AI Analyzer'
+description: 'Automatically analyzes repository health, architecture and risk factors on Pull Requests.'
+author: 'RepoPulse AI'
+inputs:
+  github_token:
+    description: 'GitHub Token for authentication'
+    required: true
+    default: ${{ github.token }}
+runs:
+  using: 'node20'
+  main: 'dist/index.js'
