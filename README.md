@@ -1,100 +1,96 @@
-# RepoPulse AI
+<div align="center">
+  <br />
+  <h1>✨ RepoPulse AI ✨</h1>
+  <p>
+    <strong>Instant health, architecture & risk intelligence for any GitHub repository.</strong>
+  </p>
+  <br />
+</div>
 
-RepoPulse AI analyzes GitHub repositories and returns a health score, risk signals, and actionable recommendations.
+RepoPulse AI is an automated, serverless Tech Lead that reviews the structural health and codebase risks of your repository the split-second a Pull Request is opened!
 
-## Monorepo Packages
-- `packages/core`: shared analysis engine (REST + GraphQL + scoring)
-- `packages/web`: Next.js dashboard + `/api/analyze`
-- `packages/cli`: terminal command (`repopulse analyze <repo>`)
-- `packages/github-app`: Probot app that comments health summaries on PR events
+Instead of just checking for syntax errors or running tests, RepoPulse AI analyzes your dependencies, open/stale issues, code concentration scores, language distributions, and commit latency. It then generates an actionable Markdown report summarizing risk levels directly inside the PR conversation, catching architectural debt before it gets merged to `main`.
 
-## Prerequisites
+---
+
+## 🚀 Use the GitHub Action (Recommended)
+You can automate your repository health tracking by installing our completely serverless GitHub Action. No accounts, no subscriptions, and zero external tracking.
+
+Install it on any repository in under 10 seconds by adding this file to your repository at `.github/workflows/repopulse.yml`:
+
+```yaml
+name: RepoPulse PR Analysis
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+permissions:
+  pull-requests: write  # Allows the action to comment on the PR
+  contents: read
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: GitGuru29/RepoPulse-AI@v1.0.0
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+```
+
+Every time a PR is opened, the Action will scan the repository and post a gorgeous Markdown report detailing risks, your Bus Factor, and actionable insights.
+
+---
+
+## 🌍 The Web Dashboard
+Need to analyze a public repository or a competitor instantly? We built a dedicated web dashboard using Next.js featuring a stunning Neon aesthetic.
+
+Scan any repo instantly: [Launch the Web Dashboard](https://repopulse.vercel.app/)
+
+*(Note: If you haven't deployed the dashboard yet, connect your Vercel account to the `packages/web` folder!)*
+
+---
+
+## 🛠️ Local Engine & CLI Development
+
+RepoPulse AI is built as a highly modular TypeScript monorepo using npm workspaces.
+
+### Packages
+- `packages/core`: The central analysis engine (REST + GraphQL + scoring logic)
+- `packages/web`: The Next.js glassmorphism web dashboard
+- `packages/cli`: A terminal command interface (`repopulse analyze <repo>`)
+- `packages/github-action`: The wrapper that runs the core engine inside GHA runners
+
+### Prerequisites
 - Node.js 20+
 - npm 10+
-- A GitHub token (recommended): `GITHUB_TOKEN`
+- A GitHub token (recommended for higher API rate limits): `GITHUB_TOKEN`
 
-## Quickstart
+### Setup
+Clone the repository and install all dependencies:
 ```bash
 npm install
-```
-
-Create environment files as needed:
-```bash
-export GITHUB_TOKEN=your_token_here
-```
-
-Build all workspaces:
-```bash
 npm run build
 ```
 
-Run all tests:
-```bash
-npm test
-```
-
-## Run Each Surface
-Web dashboard:
+Run the web dashboard locally:
 ```bash
 cd packages/web
 npm run dev
 ```
-Open `http://localhost:3000`.
 
-CLI:
+Run the CLI locally:
 ```bash
 cd packages/cli
-npm run build
-node dist/index.js analyze openai/openai-node
-node dist/index.js analyze openai/openai-node --json
 node dist/index.js analyze openai/openai-node --branch main
-node dist/index.js analyze owner/private-repo --token ghp_your_token
 ```
 
-GitHub App (Probot):
-```bash
-cd packages/github-app
-npm run build
-npm start
-```
+---
 
-## API Usage
-The web app exposes:
-```bash
-GET /api/analyze?url=owner/repo
-POST /api/analyze
-POST /api/token/verify
-```
+## 📜 Documentation & Roadmap
+Looking to contribute or want to understand exactly how our health models calculate risk?
+- **Scoring Architecture:** `docs/SCORING_MODEL.md`
+- **Product Roadmap:** `docs/PRODUCT_SPEC_ROADMAP.md`
 
-Example:
-```bash
-curl "http://localhost:3000/api/analyze?url=openai/openai-node"
-curl "http://localhost:3000/api/analyze?url=openai/openai-node&branch=main"
-```
-
-Private repo example (recommended):
-```bash
-curl -X POST "http://localhost:3000/api/analyze" \
-  -H "Content-Type: application/json" \
-  -d '{"url":"owner/private-repo","token":"ghp_your_token","branch":"main"}'
-```
-
-Token preflight example:
-```bash
-curl -X POST "http://localhost:3000/api/token/verify" \
-  -H "Content-Type: application/json" \
-  -d '{"token":"ghp_your_token"}'
-```
-
-## Reliability Notes
-Core analyzer currently includes:
-- request timeout handling
-- retry with exponential backoff for retriable failures
-- short-lived in-memory analysis cache
-- structured telemetry hooks for failures and success timing
-
-## Documentation
-- Product/roadmap: `docs/PRODUCT_SPEC_ROADMAP.md`
-- Scoring model: `docs/SCORING_MODEL.md`
-- Release checklist: `docs/RELEASE_CHECKLIST.md`
-  
+## ⚖️ License
+MIT License. Open source and built for the community.
