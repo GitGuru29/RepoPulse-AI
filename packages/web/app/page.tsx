@@ -25,7 +25,7 @@ function recommendationLevel(rec: string): RiskLevel {
 }
 
 function languagePalette(index: number): string {
-    const colors = ["#2563eb", "#f59e0b", "#16a34a", "#dc2626", "#7c3aed", "#0891b2", "#ea580c", "#4f46e5"];
+    const colors = ["#8b5cf6", "#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#ec4899", "#14b8a6", "#6366f1"];
     return colors[index % colors.length];
 }
 
@@ -138,6 +138,7 @@ export default function Home() {
         const link = `${window.location.origin}${window.location.pathname}?${params.toString()}`;
         await navigator.clipboard.writeText(link);
         setActionMsg("Report link copied.");
+        setTimeout(() => setActionMsg(null), 3000);
     };
 
     const copyMarkdownSummary = async () => {
@@ -161,238 +162,228 @@ export default function Home() {
         ].join("\n");
         await navigator.clipboard.writeText(markdown);
         setActionMsg("Markdown summary copied.");
+        setTimeout(() => setActionMsg(null), 3000);
     };
 
     return (
-        <div className="container">
-            <header className="header">
-                <h1>RepoPulse AI</h1>
-                <p>Instant health and architecture analysis for any GitHub repository.</p>
-            </header>
+        <>
+            <div className="bg-orbs">
+                <div className="orb-1"></div>
+                <div className="orb-2"></div>
+            </div>
+            <div className="noise-overlay"></div>
+            
+            <div className="container" style={{ position: 'relative', zIndex: 10 }}>
+                <header className="header">
+                    <h1>RepoPulse AI</h1>
+                    <p>Instant health and architecture intelligence for any GitHub repository.</p>
+                </header>
 
-            <form className="search-box" onSubmit={analyze}>
-                <input
-                    type="text"
-                    className="search-input"
-                    placeholder="https://github.com/owner/repo"
-                    value={repo}
-                    onChange={(e) => setRepo(e.target.value)}
-                />
-                <input
-                    type="password"
-                    className="search-input token-input"
-                    placeholder="GitHub token (optional, required for private repos)"
-                    value={token}
-                    onChange={(e) => setToken(e.target.value)}
-                    autoComplete="off"
-                />
-                <input
-                    type="text"
-                    className="search-input branch-input"
-                    placeholder="Branch/tag (optional, default: HEAD)"
-                    value={branch}
-                    onChange={(e) => setBranch(e.target.value)}
-                />
-                <button type="submit" className="search-button" disabled={loading}>
-                    {loading ? "Analyzing..." : "Analyze"}
-                </button>
-            </form>
+                <form className="search-box" onSubmit={analyze}>
+                    <input
+                        type="text"
+                        className="search-input"
+                        placeholder="https://github.com/owner/repo"
+                        value={repo}
+                        onChange={(e) => setRepo(e.target.value)}
+                    />
+                    <input
+                        type="password"
+                        className="search-input token-input"
+                        placeholder="GitHub SDK token (optional)"
+                        value={token}
+                        onChange={(e) => setToken(e.target.value)}
+                        autoComplete="off"
+                    />
+                    <input
+                        type="text"
+                        className="search-input branch-input"
+                        placeholder="Branch (def: HEAD)"
+                        value={branch}
+                        onChange={(e) => setBranch(e.target.value)}
+                    />
+                    <button type="submit" className="search-button" disabled={loading}>
+                        {loading ? "Scanning..." : "Analyze Repo"}
+                    </button>
+                </form>
 
-            {actionMsg && <p className="action-msg">{actionMsg}</p>}
+                {actionMsg && <p className="action-msg">{actionMsg}</p>}
 
-            {error && (
-                <div style={{ color: "var(--danger)", textAlign: "center", marginBottom: "2rem" }}>
-                    <strong>Error:</strong> {error}
-                    {errorHint && <div className="error-hint">{errorHint}</div>}
-                    {errorCode === "GITHUB_RATE_LIMITED" && (
-                        <div className="error-help">
-                            Add a valid GitHub Personal Access Token to continue.
-                            Use either a classic token or a fine-grained personal token.
-                        </div>
-                    )}
-                </div>
-            )}
-
-            {loading && (
-                <div className="results-grid">
-                    {Array.from({ length: 6 }).map((_, i) => (
-                        <div key={i} className="card">
-                            <div className="skeleton skeleton-title" />
-                            <div className="skeleton skeleton-line" />
-                            <div className="skeleton skeleton-line" />
-                            <div className="skeleton skeleton-line short" />
-                        </div>
-                    ))}
-                </div>
-            )}
-
-            {result && !loading && (
-                <div className="results-grid">
-                    <div className="card" style={{ gridColumn: "1 / -1" }}>
-                        <h3>Repository Identity</h3>
-                        <div className="identity-grid">
-                            <div className="stat-row"><span>Repository</span><strong>{result.stats.repo}</strong></div>
-                            <div className="stat-row"><span>Owner</span><strong>{result.stats.owner}</strong></div>
-                            <div className="stat-row"><span>Visibility</span><strong>{result.stats.visibility || "Unknown"}</strong></div>
-                            <div className="stat-row"><span>Default Branch</span><strong>{result.stats.defaultBranch || "Unknown"}</strong></div>
-                            <div className="stat-row"><span>Last Updated</span><strong>{formatDate(result.stats.updatedAt)}</strong></div>
-                            <div className="stat-row"><span>Primary Language</span><strong>{languageSummary.primaryLanguage}</strong></div>
-                        </div>
+                {error && (
+                    <div style={{ color: "var(--danger)", textAlign: "center", margin: "2rem auto", padding: "1.5rem", borderRadius: "1rem", background: "rgba(255,0,0,0.05)", border: "1px solid rgba(255,0,0,0.1)", maxWidth: "800px" }}>
+                        <strong>Error:</strong> {error}
+                        {errorHint && <div className="error-hint" style={{ marginTop: "0.5rem" }}>{errorHint}</div>}
                     </div>
+                )}
 
-                    <div className="card" style={{ gridColumn: "1 / -1" }}>
-                        <h3>Language Stack</h3>
-                        {languageSummary.topLanguages.length > 0 ? (
-                            <>
-                                <div className="language-stack-bar">
-                                    {languageSummary.topLanguages.map((lang: any, index: number) => (
-                                        <div
-                                            key={lang.name}
-                                            className="language-stack-segment"
-                                            style={{
-                                                width: `${lang.percent}%`,
-                                                backgroundColor: languagePalette(index)
-                                            }}
-                                            title={`${lang.name}: ${lang.percent}%`}
-                                        />
-                                    ))}
+                {loading && (
+                    <div className="results-grid">
+                        {Array.from({ length: 6 }).map((_, i) => (
+                            <div key={i} className="card" style={{ animationDelay: `${i * 0.1}s` }}>
+                                <div className="skeleton skeleton-title" />
+                                <div className="skeleton skeleton-line" />
+                                <div className="skeleton skeleton-line" />
+                                <div className="skeleton skeleton-line short" />
+                            </div>
+                        ))}
+                    </div>
+                )}
+
+                {result && !loading && (
+                    <div className="results-grid">
+                        <div className="card" style={{ gridColumn: "1 / -1", animationDelay: "0.1s" }}>
+                            <h3>Repository Identity</h3>
+                            <div className="identity-grid">
+                                <div className="stat-row"><span>Repository</span><strong>{result.stats.repo}</strong></div>
+                                <div className="stat-row"><span>Owner</span><strong>{result.stats.owner}</strong></div>
+                                <div className="stat-row"><span>Visibility</span><strong>{result.stats.visibility || "Unknown"}</strong></div>
+                                <div className="stat-row"><span>Default Branch</span><strong>{result.stats.defaultBranch || "Unknown"}</strong></div>
+                                <div className="stat-row"><span>Last Updated</span><strong>{formatDate(result.stats.updatedAt)}</strong></div>
+                                <div className="stat-row"><span>Primary Language</span><strong>{languageSummary.primaryLanguage}</strong></div>
+                            </div>
+                        </div>
+
+                        <div className="card" style={{ animationDelay: "0.2s" }}>
+                            <h3>Health Score</h3>
+                            <div className="score">
+                                {result.healthScore}<span style={{fontSize: '2.5rem', color: '#a1a1aa'}}>/100</span>
+                                <span className="trend">{trendBadge(trendDirectionFromScore(result.healthScore))}</span>
+                            </div>
+                            <p className="muted">
+                                Calculated from dependencies, activity, docs, ownership, and PR health matrices.
+                            </p>
+                            <div className={`badge ${result.healthScore >= 80 ? "badge-low" : result.healthScore >= 60 ? "badge-medium" : "badge-high"}`}>
+                                {result.healthScore >= 80 ? "Healthy" : result.healthScore >= 60 ? "Needs Attention" : "At Risk"}
+                            </div>
+                        </div>
+
+                        <div className="card" style={{ animationDelay: "0.3s" }}>
+                            <h3>Metrics at a Glance</h3>
+                            <div className="stat-row"><span>Stars</span><strong>{result.stats.stars || "—"}</strong></div>
+                            <div className="stat-row"><span>Forks</span><strong>{result.stats.forks || "—"}</strong></div>
+                            <div className="stat-row"><span>Watchers</span><strong>{result.stats.watchers || "—"}</strong></div>
+                            <div className="stat-row"><span>Avg Merge Time</span><strong>{result.pullRequests.averageTimeToMergeDays}d</strong></div>
+                        </div>
+
+                        <div className="card" style={{ gridColumn: "1 / -1", animationDelay: "0.4s" }}>
+                            <h3>Language Stack</h3>
+                            {languageSummary.topLanguages.length > 0 ? (
+                                <>
+                                    <div className="language-stack-bar">
+                                        {languageSummary.topLanguages.map((lang: any, index: number) => (
+                                            <div
+                                                key={lang.name}
+                                                className="language-stack-segment"
+                                                style={{
+                                                    width: `${lang.percent}%`,
+                                                    backgroundColor: languagePalette(index)
+                                                }}
+                                                title={`${lang.name}: ${lang.percent}%`}
+                                            />
+                                        ))}
+                                    </div>
+                                    <ul className="language-list" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))" }}>
+                                        {languageSummary.topLanguages.map((lang: any, index: number) => (
+                                            <li key={lang.name}>
+                                                <span className="language-name">
+                                                    <span className="language-dot" style={{ backgroundColor: languagePalette(index) }} />
+                                                    {lang.name}
+                                                </span>
+                                                <strong>{lang.percent}%</strong>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </>
+                            ) : (
+                                <p className="muted">No language data available.</p>
+                            )}
+                        </div>
+
+                        <div className="card" style={{ animationDelay: "0.5s" }}>
+                            <h3>Pull Requests & Issues</h3>
+                            <div className="stat-row"><span>Open Issues</span><strong>{result.issues.openIssues}</strong></div>
+                            <div className="stat-row">
+                                <span>Stale Issues</span>
+                                <strong style={{ color: result.issues.staleIssues > 0 ? "var(--danger)" : "var(--foreground)" }}>
+                                    {result.issues.staleIssues}
+                                </strong>
+                            </div>
+                            <div className="stat-row">
+                                <span>Abandoned PRs</span>
+                                <strong style={{ color: result.pullRequests.abandonedPRs > 0 ? "var(--warning)" : "var(--foreground)" }}>
+                                    {result.pullRequests.abandonedPRs}
+                                </strong>
+                            </div>
+                        </div>
+
+                        <div className="card" style={{ animationDelay: "0.6s" }}>
+                            <h3>Risk Snapshot</h3>
+                            <div className="stat-row">
+                                <span title="Measures dependency hygiene based on lockfiles, automation, and ecosystem complexity.">Dependency Risk</span>
+                                <div className="metric-with-badge">
+                                    <strong>{result.risks.dependencyRiskScore}/100</strong>
+                                    <span className={`badge badge-${getRiskLevel(result.risks.dependencyRiskScore, 65, 80)}`}>
+                                        {levelLabel(getRiskLevel(result.risks.dependencyRiskScore, 65, 80))}
+                                    </span>
                                 </div>
-                                <ul className="language-list">
-                                    {languageSummary.topLanguages.map((lang: any, index: number) => (
-                                        <li key={lang.name}>
-                                            <span className="language-name">
-                                                <span className="language-dot" style={{ backgroundColor: languagePalette(index) }} />
-                                                {lang.name}
-                                            </span>
-                                            <strong>{lang.percent}%</strong>
-                                        </li>
-                                    ))}
-                                </ul>
-                            </>
-                        ) : (
-                            <p>No language data available.</p>
-                        )}
-                    </div>
-
-                    <div className="card">
-                        <h3>Health Score</h3>
-                        <div className="score">
-                            {result.healthScore}/100 <span className="trend">{trendBadge(trendDirectionFromScore(result.healthScore))}</span>
-                        </div>
-                        <p className="muted">
-                            Calculated from dependencies, activity, docs, ownership, and PR health.
-                        </p>
-                        <div className={`badge ${result.healthScore >= 80 ? "badge-low" : result.healthScore >= 60 ? "badge-medium" : "badge-high"}`}>
-                            {result.healthScore >= 80 ? "Healthy" : result.healthScore >= 60 ? "Needs Attention" : "At Risk"}
-                        </div>
-                    </div>
-
-                    <div className="card">
-                        <h3>At a Glance</h3>
-                        <div className="stat-row"><span>Stars</span><strong>{result.stats.stars || "—"}</strong></div>
-                        <div className="stat-row"><span>Forks</span><strong>{result.stats.forks || "—"}</strong></div>
-                        <div className="stat-row"><span>Watchers</span><strong>{result.stats.watchers || "—"}</strong></div>
-                        <div className="stat-row"><span>Avg Merge Time</span><strong>{result.pullRequests.averageTimeToMergeDays}d</strong></div>
-                    </div>
-
-                    <div className="card">
-                        <h3>Pull Requests & Issues</h3>
-                        <div className="stat-row"><span>Open Issues</span><strong>{result.issues.openIssues}</strong></div>
-                        <div className="stat-row">
-                            <span>Stale Issues</span>
-                            <strong style={{ color: result.issues.staleIssues > 0 ? "var(--danger)" : "var(--foreground)" }}>
-                                {result.issues.staleIssues}
-                            </strong>
-                        </div>
-                        <div className="stat-row">
-                            <span>Abandoned PRs</span>
-                            <strong style={{ color: result.pullRequests.abandonedPRs > 0 ? "var(--warning)" : "var(--foreground)" }}>
-                                {result.pullRequests.abandonedPRs}
-                            </strong>
-                        </div>
-                        {result.issues.openIssues === 0 && result.issues.closedIssues === 0 && (
-                            <p className="muted">No public issue data found.</p>
-                        )}
-                    </div>
-
-                    <div className="card">
-                        <h3>Risk Snapshot</h3>
-                        <div className="stat-row">
-                            <span title="Measures dependency hygiene based on lockfiles, automation, and ecosystem complexity.">Dependency Risk</span>
-                            <div className="metric-with-badge">
-                                <strong>{result.risks.dependencyRiskScore}/100</strong>
-                                <span className={`badge badge-${getRiskLevel(result.risks.dependencyRiskScore, 65, 80)}`}>
-                                    {levelLabel(getRiskLevel(result.risks.dependencyRiskScore, 65, 80))}
+                            </div>
+                            <div className="stat-row">
+                                <span title="Bus factor shows concentration risk when too much critical work is owned by very few contributors.">Bus Factor</span>
+                                <span className={`badge ${result.risks.busFactorRisk ? "badge-high" : "badge-low"}`}>
+                                    {result.risks.busFactorRisk ? "High" : "Low"}
+                                </span>
+                            </div>
+                            <div className="stat-row">
+                                <span title="Code staleness reflects how recently meaningful maintenance activity happened.">Code Staleness</span>
+                                <span className={`badge ${result.risks.staleCodeRisk ? "badge-medium" : "badge-low"}`}>
+                                    {result.risks.staleCodeRisk ? "Stale" : "Active"}
+                                </span>
+                            </div>
+                            <div className="stat-row">
+                                <span>Documentation</span>
+                                <span className={`badge ${result.risks.documentationRisk ? "badge-medium" : "badge-low"}`}>
+                                    {result.risks.documentationRisk ? "At Risk" : "Good"}
                                 </span>
                             </div>
                         </div>
-                        <div className="stat-row">
-                            <span title="Bus factor shows concentration risk when too much critical work is owned by very few contributors.">Bus Factor</span>
-                            <span className={`badge ${result.risks.busFactorRisk ? "badge-high" : "badge-low"}`}>
-                                {result.risks.busFactorRisk ? "High" : "Low"}
-                            </span>
-                        </div>
-                        <div className="stat-row">
-                            <span title="Code staleness reflects how recently meaningful maintenance activity happened.">Code Staleness</span>
-                            <span className={`badge ${result.risks.staleCodeRisk ? "badge-medium" : "badge-low"}`}>
-                                {result.risks.staleCodeRisk ? "Stale" : "Active"}
-                            </span>
-                        </div>
-                        <div className="stat-row">
-                            <span>Documentation</span>
-                            <span className={`badge ${result.risks.documentationRisk ? "badge-medium" : "badge-low"}`}>
-                                {result.risks.documentationRisk ? "At Risk" : "Good"}
-                            </span>
-                        </div>
-                    </div>
 
-                    <div className="card">
-                        <h3>Trend Direction</h3>
-                        <div className="stat-row"><span>Health Score</span><strong>{trendBadge(trendDirectionFromScore(result.healthScore))}</strong></div>
-                        <div className="stat-row">
-                            <span>Code Staleness</span>
-                            <strong>{result.risks.staleCodeRisk ? "Worsening" : "Improving"}</strong>
+                        <div className="card" style={{ gridColumn: "1 / -1", animationDelay: "0.7s" }}>
+                            <h3>Architecture Scan</h3>
+                            <div className="identity-grid">
+                                <div className="stat-row"><span>Project Structure Quality</span><strong>{result.architecture?.projectStructureQuality || "Unknown"}</strong></div>
+                                <div className="stat-row"><span>Detected Framework</span><strong>{result.architecture?.detectedFramework || "Unknown"}</strong></div>
+                                <div className="stat-row"><span>Tests</span><strong>{result.architecture?.missingTests ? "Missing or sparse" : "Detected"}</strong></div>
+                                <div className="stat-row"><span>CI/CD</span><strong>{result.architecture?.ciCdPresent ? "Present" : "Not detected"}</strong></div>
+                                <div className="stat-row"><span>Docs</span><strong>{result.architecture?.docsPresent ? "Present" : "Not detected"}</strong></div>
+                                <div className="stat-row"><span>Large Files</span><strong>{result.architecture?.largeFiles?.length || 0}</strong></div>
+                                <div className="stat-row"><span>God Modules</span><strong>{result.architecture?.godModules?.length || 0}</strong></div>
+                                <div className="stat-row"><span>Possible Dead Code</span><strong>{result.architecture?.possibleDeadCodeZones?.length || 0}</strong></div>
+                            </div>
                         </div>
-                        <div className="stat-row">
-                            <span>PR Latency</span>
-                            <strong>{result.pullRequests.averageTimeToMergeDays > 14 ? "Worsening" : "Improving"}</strong>
+
+                        <div className="card" style={{ gridColumn: "1 / -1", animationDelay: "0.8s" }}>
+                            <h3>Actionable Insights</h3>
+                            <ul className="insight-list">
+                                {result.recommendations.map((rec: string, i: number) => (
+                                    <li key={i}>
+                                        <span className={`badge badge-${recommendationLevel(rec)}`}>{levelLabel(recommendationLevel(rec))}</span>
+                                        <span>{rec}</span>
+                                    </li>
+                                ))}
+                            </ul>
                         </div>
-                    </div>
 
-                    <div className="card" style={{ gridColumn: "1 / -1" }}>
-                        <h3>Architecture Scan</h3>
-                        <div className="stat-row"><span>Project Structure Quality</span><strong>{result.architecture?.projectStructureQuality || "Unknown"}</strong></div>
-                        <div className="stat-row"><span>Detected Framework</span><strong>{result.architecture?.detectedFramework || "Unknown"}</strong></div>
-                        <div className="stat-row"><span>Tests</span><strong>{result.architecture?.missingTests ? "Missing or sparse" : "Detected"}</strong></div>
-                        <div className="stat-row"><span>CI/CD</span><strong>{result.architecture?.ciCdPresent ? "Present" : "Not detected"}</strong></div>
-                        <div className="stat-row"><span>Docs</span><strong>{result.architecture?.docsPresent ? "Present" : "Not detected"}</strong></div>
-                        <div className="stat-row"><span>Large Files</span><strong>{result.architecture?.largeFiles?.length || 0}</strong></div>
-                        <div className="stat-row"><span>God Modules</span><strong>{result.architecture?.godModules?.length || 0}</strong></div>
-                        <div className="stat-row"><span>Possible Dead Code Zones</span><strong>{result.architecture?.possibleDeadCodeZones?.length || 0}</strong></div>
-                    </div>
-
-                    <div className="card" style={{ gridColumn: "1 / -1" }}>
-                        <h3>Actionable Insights</h3>
-                        <ul className="insight-list">
-                            {result.recommendations.map((rec: string, i: number) => (
-                                <li key={i}>
-                                    <span className={`badge badge-${recommendationLevel(rec)}`}>{levelLabel(recommendationLevel(rec))}</span>
-                                    <span>{rec}</span>
-                                </li>
-                            ))}
-                        </ul>
-                    </div>
-
-                    <div className="card" style={{ gridColumn: "1 / -1" }}>
-                        <h3>Export & Share</h3>
-                        <div className="actions">
-                            <button className="search-button" type="button" onClick={() => window.print()}>Export as PDF</button>
-                            <button className="search-button" type="button" onClick={copyReportLink}>Copy Report Link</button>
-                            <button className="search-button" type="button" onClick={copyMarkdownSummary}>Copy Markdown Summary</button>
+                        <div className="card" style={{ gridColumn: "1 / -1", animationDelay: "0.9s", background: "rgba(139, 92, 246, 0.05)" }}>
+                            <h3>Export & Share</h3>
+                            <div className="actions">
+                                <button className="search-button" type="button" onClick={() => window.print()}>Export as PDF</button>
+                                <button className="search-button" type="button" onClick={copyReportLink}>Copy Report Link</button>
+                                <button className="search-button" type="button" onClick={copyMarkdownSummary}>Copy Markdown Summary</button>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
-        </div>
+                )}
+            </div>
+        </>
     );
 }
