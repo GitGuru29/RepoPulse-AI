@@ -375,6 +375,15 @@ export default function Home() {
                     </div>
                 </div>
             )}
+
+            {/* FOOTER */}
+            <footer className="footer">
+                <p>&copy; {new Date().getFullYear()} GitGuru29 & RepoPulse AI</p>
+                <p style={{ marginTop: "0.6rem" }}>
+                    An automated open source architecture engine.
+                    <a href="https://github.com/GitGuru29/RepoPulse-AI" target="_blank" rel="noopener noreferrer" style={{ marginLeft: "0.75rem" }}>View on GitHub</a>
+                </p>
+            </footer>
         </div>
     );
 }

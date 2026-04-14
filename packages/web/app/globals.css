@@ -507,3 +507,31 @@ body::before {
   .token-input, .branch-input { min-width: 0; }
   .results-grid { grid-template-columns: 1fr; }
 }
+
+/* ─────────────────────────────────────
+   FOOTER
+───────────────────────────────────── */
+.footer {
+  text-align: center;
+  padding: 3rem 0 1rem;
+  margin-top: 4rem;
+  border-top: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 0.9rem;
+  animation: fadeUp 0.8s ease forwards;
+}
+
+.footer p {
+  margin: 0;
+}
+
+.footer a {
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: color 0.2s;
+  font-weight: 500;
+}
+
+.footer a:hover {
+  color: var(--neon-cyan);
+}
