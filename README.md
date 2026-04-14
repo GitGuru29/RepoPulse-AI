@@ -1,4 +1,4 @@
-# RepoPulse AI
+# RepoPulseAI
 
 RepoPulse AI analyzes GitHub repositories and returns a health score, risk signals, and actionable recommendations.
 
