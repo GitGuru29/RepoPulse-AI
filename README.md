@@ -92,5 +92,14 @@ Looking to contribute or want to understand exactly how our health models calcul
 - **Scoring Architecture:** `docs/SCORING_MODEL.md`
 - **Product Roadmap:** `docs/PRODUCT_SPEC_ROADMAP.md`
 
-## ⚖️ License
-MIT License. Open source and built for the community.
+## Reliability Notes
+Core analyzer currently includes:
+- request timeout handling
+- retry with exponential backoff for retriable failures
+- short-lived in-memory analysis cache
+- structured telemetry hooks for failures and success timing
+
+## Documentation
+- Product/roadmap: `docs/PRODUCT_SPEC_ROADMAP.md`
+- Scoring model: `docs/SCORING_MODEL.md`
+- Release checklist: `docs/RELEASE_CHECKLIST.md`
