@@ -1,6 +1,6 @@
 <div align="center">
   <br />
-  <h1>✨ RepoPulse AI ✨</h1>
+  <h1> RepoPulse AI </h1>
   <p>
     <strong>Instant health, architecture & risk intelligence for any GitHub repository.</strong>
   </p>
@@ -13,7 +13,7 @@ Instead of just checking for syntax errors or running tests, RepoPulse AI analyz
 
 ---
 
-## 🚀 Use the GitHub Action (Recommended)
+##  Use the GitHub Action (Recommended)
 You can automate your repository health tracking by installing our completely serverless GitHub Action. No accounts, no subscriptions, and zero external tracking.
 
 Install it on any repository in under 10 seconds by adding this file to your repository at `.github/workflows/repopulse.yml`:
@@ -42,7 +42,7 @@ Every time a PR is opened, the Action will scan the repository and post a gorgeo
 
 ---
 
-## 🌍 The Web Dashboard
+##  The Web Dashboard
 Need to analyze a public repository or a competitor instantly? We built a dedicated web dashboard using Next.js featuring a stunning Neon aesthetic.
 
 Scan any repo instantly: [Launch the Web Dashboard](https://repopulse.vercel.app/)
@@ -51,7 +51,7 @@ Scan any repo instantly: [Launch the Web Dashboard](https://repopulse.vercel.app
 
 ---
 
-## 🛠️ Local Engine & CLI Development
+##  Local Engine & CLI Development
 
 RepoPulse AI is built as a highly modular TypeScript monorepo using npm workspaces.
 
@@ -87,7 +87,7 @@ node dist/index.js analyze openai/openai-node --branch main
 
 ---
 
-## 📜 Documentation & Roadmap
+##  Documentation & Roadmap
 Looking to contribute or want to understand exactly how our health models calculate risk?
 - **Scoring Architecture:** `docs/SCORING_MODEL.md`
 - **Product Roadmap:** `docs/PRODUCT_SPEC_ROADMAP.md`
